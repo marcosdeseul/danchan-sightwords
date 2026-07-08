@@ -1,0 +1,22 @@
+CREATE TABLE IF NOT EXISTS users (
+  id BIGSERIAL PRIMARY KEY,
+  email TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS user_progress (
+  user_id BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  content_version INTEGER NOT NULL,
+  state JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  sid VARCHAR NOT NULL PRIMARY KEY,
+  sess JSON NOT NULL,
+  expire TIMESTAMP(6) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS sessions_expire_idx ON sessions (expire);
