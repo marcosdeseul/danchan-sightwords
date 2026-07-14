@@ -1,6 +1,6 @@
 "use strict";
 
-const CONTENT_VERSION = 4;
+const CONTENT_VERSION = 5;
 
 const FIRST_100 = [
   "the", "of", "and", "a", "to", "in", "is", "you", "that", "it",
@@ -63,7 +63,7 @@ const FIFTH_100 = [
   "plane", "system", "behind", "ran", "round", "boat", "game", "force", "brought", "understand",
   "warm", "common", "bring", "explain", "dry", "though", "language", "shape", "deep", "thousands",
   "yes", "clear", "equation", "yet", "government", "filled", "heat", "full", "hot", "check",
-  "object", "am", "rule", "among", "noun", "power", "cannot", "able", "six", "size",
+  "object", "else", "rule", "among", "noun", "power", "cannot", "able", "six", "size",
   "dark", "ball", "material", "special", "heavy", "fine", "pair", "circle", "include", "built",
 ];
 
@@ -99,6 +99,16 @@ const REWARD_SLOTS = [
   "compass", "scroll", "badge", "canteen", "whistle",
 ];
 
+const STAGE_REWARD_SLOT_OVERRIDES = {
+  4: {
+    2: "radio",
+  },
+};
+
+const REWARD_ID_ALIASES = {
+  "stage4-shield": "stage4-radio",
+};
+
 const REWARD_NAMES = {
   1: [
     "Stone Hammer", "Hide Boots", "Pebble Shield", "Leaf Cape", "Bone Vest",
@@ -116,11 +126,11 @@ const REWARD_NAMES = {
     "Castle Star", "Knight Map", "Beacon Torch", "Royal Flag", "Tournament Trophy",
   ],
   4: [
-    "Signal Baton", "Runner Boots", "Safety Shield", "Utility Cape", "Modern Vest",
-    "Tool Belt", "Bright Gloves", "Scout Helmet", "Team Banner", "Guide Cap",
-    "Honor Patch", "Crystal Beacon", "Field Pack", "City Lantern", "Service Crest",
-    "Guide Star", "Explorer Map", "Signal Light", "Team Flag", "Victory Cup",
-    "Signal Compass", "Mission Scroll", "Service Badge", "Trail Canteen", "Team Whistle",
+    "Foam Training Gun", "Field Boots", "Field Radio", "Rain Poncho", "Modern Vest",
+    "Tool Belt", "Bright Gloves", "Scout Helmet", "Unit Banner", "Patrol Cap",
+    "Honor Patch", "Signal Beacon", "Field Pack", "Camp Lantern", "Service Crest",
+    "Service Star", "Field Map", "Signal Light", "Unit Flag", "Challenge Cup",
+    "Field Compass", "Mission Plan", "Service Badge", "Field Canteen", "Team Whistle",
   ],
 };
 
@@ -134,9 +144,9 @@ const STAGES = [
     words: FIRST_100,
     fieldTrip: {
       title: "Ancient Field Trip",
-      intro: "Run across the valley and collect friendly cave critters.",
+      intro: "Move across the valley and bonk silly cave monsters.",
       finish: "Stage 2 unlocked!",
-      creatures: ["lizard", "mammoth", "owl", "turtle", "fox"],
+      creatures: ["Pebble Imp", "Moss Muncher", "Cave Wobble", "Tiny Tusk", "Leaf Sneak"],
     },
   },
   {
@@ -148,9 +158,9 @@ const STAGES = [
     words: [...SECOND_100, ...THIRD_100.slice(0, 50)],
     fieldTrip: {
       title: "Roman Road Field Trip",
-      intro: "Run along the Roman road and collect friendly helper animals.",
+      intro: "Move along the Roman road and bonk silly road monsters.",
       finish: "Stage 3 unlocked!",
-      creatures: ["eagle", "tortoise", "wolf pup", "dove", "pony"],
+      creatures: ["Road Imp", "Shield Wobble", "Tiny Cyclops", "Vine Sneak", "Helmet Hopper"],
     },
   },
   {
@@ -162,9 +172,9 @@ const STAGES = [
     words: [...THIRD_100.slice(50), ...FOURTH_100, ...FIFTH_100.slice(0, 50)],
     fieldTrip: {
       title: "Castle Field Trip",
-      intro: "Run past the castle road and befriend tiny forest monsters.",
+      intro: "Move past the castle road and bonk tiny forest monsters.",
       finish: "Stage 4 unlocked!",
-      creatures: ["sprite", "dragonling", "mushroom", "fox", "bat"],
+      creatures: ["Forest Sprite", "Mini Dragon", "Mushroom Grump", "Castle Wisp", "Batty Blob"],
     },
   },
   {
@@ -176,29 +186,31 @@ const STAGES = [
     words: [...FIFTH_100.slice(50), ...SIXTH_100, ...SEVENTH_100],
     fieldTrip: {
       title: "Modern Field Trip",
-      intro: "Run across the city course and collect bright helper bots.",
+      intro: "Move across the city course and bonk goofy robot monsters.",
       finish: "All stages complete!",
-      creatures: ["bot", "star", "rocket", "orb", "spark"],
+      creatures: ["Gear Bot", "Spark Orb", "Cone Wobble", "Signal Blob", "Circuit Imp"],
     },
   },
 ];
 
 function rewardsForStage(stage) {
   const names = REWARD_NAMES[stage.id];
+  const slotOverrides = STAGE_REWARD_SLOT_OVERRIDES[stage.id] || {};
 
   return names.map((name, index) => ({
-    id: `stage${stage.id}-${REWARD_SLOTS[index]}`,
+    id: `stage${stage.id}-${slotOverrides[index] || REWARD_SLOTS[index]}`,
     name,
-    slot: REWARD_SLOTS[index],
+    slot: slotOverrides[index] || REWARD_SLOTS[index],
     stageId: stage.id,
     milestone: (index + 1) * 10,
-    visualKey: `stage${stage.id}-${REWARD_SLOTS[index]}`,
+    visualKey: `stage${stage.id}-${slotOverrides[index] || REWARD_SLOTS[index]}`,
   }));
 }
 
 const STAGE_BY_ID = new Map(STAGES.map((stage) => [stage.id, stage]));
 const PUBLIC_CONTENT = Object.freeze({
   version: CONTENT_VERSION,
+  rewardAliases: REWARD_ID_ALIASES,
   stages: STAGES.map((stage) => ({
     id: stage.id,
     title: stage.title,
@@ -222,6 +234,7 @@ function allStageIds() {
 module.exports = {
   CONTENT_VERSION,
   PUBLIC_CONTENT,
+  REWARD_ID_ALIASES,
   STAGES,
   stageById,
   allStageIds,

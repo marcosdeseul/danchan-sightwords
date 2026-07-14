@@ -9,12 +9,9 @@ import type {
 
 export const STORAGE_KEY = "danSightWords:v2";
 export const LEGACY_STORAGE_KEY = "danSightWords:v1";
-export const LOW_NEW_WORD_THRESHOLD = 30;
-export const NEXT_WORD_BUCKETS = Object.freeze([
-  { name: "new", weight: 80 },
-  { name: "practice", weight: 15 },
-  { name: "known", weight: 5 },
-] as const);
+export const OFFLINE_STORAGE_PREFIX = "danSightWords:offline:v1";
+export const REVIEW_PRACTICE_WEIGHT = 80;
+export const REVIEW_KNOWN_WEIGHT = 20;
 export const MAZE_LAYOUTS = Object.freeze([
   ["...#...", "##...#.", "#....#.", "###....", "...#...", ".#.#.#.", "...#..."],
   ["..#.#..", ".#...#.", ".#.##..", "...#.#.", ".###...", "...##.#", "......."],
@@ -39,7 +36,7 @@ export const TRIP_TARGET = 5;
 export const LANE_TOPS = [43, 58, 73] as const;
 
 export type MoveDirection = keyof typeof MOVE_DELTAS;
-export type WordBucketName = (typeof NEXT_WORD_BUCKETS)[number]["name"];
+export type WordBucketName = "new" | "practice" | "known";
 
 export interface WordBuckets {
   new: number[];
@@ -86,27 +83,55 @@ export function readJsonStorage(key: string): unknown {
   }
 }
 
-export function loadLocalProgress(content: SightWordsContent): ProgressState {
-  const saved = readJsonStorage(STORAGE_KEY);
-
-  if (saved) {
-    return sanitizeProgress(content, saved);
-  }
-
-  const legacy = readJsonStorage(LEGACY_STORAGE_KEY);
-
-  if (legacy) {
-    return progressForLegacyState(content, legacy);
-  }
-
-  return defaultProgress(content);
+export function offlineProgressStorageKey(userId: number): string {
+  return `${OFFLINE_STORAGE_PREFIX}:${userId}`;
 }
 
-export function saveLocalProgress(progress: ProgressState): void {
+export function loadOfflineProgress(
+  content: SightWordsContent,
+  userId: number,
+): ProgressState | null {
+  const saved = readJsonStorage(offlineProgressStorageKey(userId));
+
+  if (!saved || typeof saved !== "object") {
+    return null;
+  }
+
+  const record = saved as Record<string, unknown>;
+
+  if (Number(record.userId) !== userId || !record.progress) {
+    return null;
+  }
+
+  return sanitizeProgress(content, record.progress);
+}
+
+export function saveOfflineProgress(userId: number, progress: ProgressState): boolean {
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
+    window.localStorage.setItem(
+      offlineProgressStorageKey(userId),
+      JSON.stringify({ userId, progress }),
+    );
+    return true;
   } catch {
-    // The current session can continue if browser storage is unavailable.
+    return false;
+  }
+}
+
+export function clearOfflineProgress(userId: number): void {
+  try {
+    window.localStorage.removeItem(offlineProgressStorageKey(userId));
+  } catch {
+    // A successful server save is enough when browser storage is unavailable.
+  }
+}
+
+export function clearPreviousLocalProgress(): void {
+  try {
+    window.localStorage.removeItem(STORAGE_KEY);
+    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+  } catch {
+    // Old browser data is ignored even if storage cleanup is unavailable.
   }
 }
 
@@ -184,7 +209,7 @@ export function sanitizeProgress(
   const activeStageId = Number(source.activeStageId);
   progress.activeStageId = progress.unlockedStageIds.includes(activeStageId)
     ? activeStageId
-    : progress.unlockedStageIds[progress.unlockedStageIds.length - 1] || 1;
+    : progress.unlockedStageIds[progress.unlockedStageIds.length - 1];
 
   return progress;
 }
@@ -211,11 +236,12 @@ export function sanitizeStageState(
     rewardByMilestone,
   );
   const completedSet = new Set(completedMazeMilestones);
-  const unlockedItems = cleanItemArray(source.unlockedItems, rewardById);
-  const equippedItems = cleanItemArray(source.equippedItems, rewardById).filter(
+  const unlockedItems = cleanItemArray(content, source.unlockedItems, rewardById);
+  const equippedItems = cleanItemArray(content, source.equippedItems, rewardById).filter(
     (itemId) => unlockedItems.includes(itemId),
   );
   const pendingReward = cleanPendingReward(
+    content,
     source.pendingReward,
     knownWords.length,
     rewardById,
@@ -324,7 +350,6 @@ export function unlockedStageIdsFor(
   stages: Record<string, StageProgress>,
 ): number[] {
   const unlockedStageIds = [1];
-  const validStageIds = new Set(content.stages.map((stage) => stage.id));
 
   for (const stage of content.stages) {
     if (!hasNextStage(content, stage)) {
@@ -337,9 +362,7 @@ export function unlockedStageIdsFor(
       break;
     }
 
-    if (validStageIds.has(stage.id + 1)) {
-      unlockedStageIds.push(stage.id + 1);
-    }
+    unlockedStageIds.push(stage.id + 1);
   }
 
   return unlockedStageIds;
@@ -398,13 +421,9 @@ export function shouldUseWeightedNextWord(
   content: SightWordsContent,
   progress: ProgressState,
 ): boolean {
-  const stage = activeStage(content, progress);
-  const stageState = activeStageState(content, progress);
+  const buckets = buildWordBuckets(content, progress, true);
 
-  return (
-    stage.words.length - stageState.knownWords.length - stageState.practiceWords.length <
-    LOW_NEW_WORD_THRESHOLD
-  );
+  return hasAnyWordBucket(buckets);
 }
 
 export function selectWeightedWordIndex(
@@ -412,30 +431,52 @@ export function selectWeightedWordIndex(
   progress: ProgressState,
 ): number | null {
   let buckets = buildWordBuckets(content, progress, true);
-  let weightedBuckets = NEXT_WORD_BUCKETS.filter(
-    (bucket) => buckets[bucket.name].length > 0,
-  );
 
-  if (weightedBuckets.length === 0) {
+  if (!hasAnyWordBucket(buckets)) {
     buckets = buildWordBuckets(content, progress, false);
-    weightedBuckets = NEXT_WORD_BUCKETS.filter(
-      (bucket) => buckets[bucket.name].length > 0,
-    );
   }
 
-  const totalWeight = weightedBuckets.reduce((sum, bucket) => sum + bucket.weight, 0);
-  let roll = Math.random() * totalWeight;
-
-  for (const bucket of weightedBuckets) {
-    roll -= bucket.weight;
-
-    if (roll <= 0) {
-      return randomItem(buckets[bucket.name]);
-    }
+  if (!hasAnyWordBucket(buckets)) {
+    return null;
   }
 
-  const fallbackBucket = weightedBuckets[weightedBuckets.length - 1];
-  return fallbackBucket ? randomItem(buckets[fallbackBucket.name]) : null;
+  const stage = activeStage(content, progress);
+  const stageState = activeStageState(content, progress);
+  const progressRatio = stageState.knownWords.length / stage.words.length;
+  const newWordWeight = newWordWeightForProgress(progressRatio);
+  const hasNewWords = buckets.new.length > 0;
+  const hasPracticeWords = buckets.practice.length > 0;
+  const hasKnownWords = buckets.known.length > 0;
+  const hasReviewWords = hasPracticeWords || hasKnownWords;
+
+  if (hasNewWords && (!hasReviewWords || Math.random() * 100 < newWordWeight)) {
+    return randomItem(buckets.new);
+  }
+
+  if (hasPracticeWords && hasKnownWords) {
+    return Math.random() * (REVIEW_PRACTICE_WEIGHT + REVIEW_KNOWN_WEIGHT) <
+      REVIEW_PRACTICE_WEIGHT
+      ? randomItem(buckets.practice)
+      : randomItem(buckets.known);
+  }
+
+  return hasPracticeWords ? randomItem(buckets.practice) : randomItem(buckets.known);
+}
+
+export function newWordWeightForProgress(progressRatio: number): number {
+  if (progressRatio <= 0.25) {
+    return 100;
+  }
+
+  if (progressRatio <= 0.5) {
+    return 90;
+  }
+
+  if (progressRatio <= 0.75) {
+    return 80;
+  }
+
+  return 70;
 }
 
 export function currentMazeLayout(progress: ProgressState, stage: StageContent): readonly string[] {
@@ -495,7 +536,7 @@ function cleanDeckOrder(value: unknown, length: number): number[] {
     }
   });
 
-  return clean.length === length ? clean : defaultOrder;
+  return clean;
 }
 
 function cleanStageIds(content: SightWordsContent, value: unknown): number[] {
@@ -509,14 +550,21 @@ function cleanStageIds(content: SightWordsContent, value: unknown): number[] {
   );
 }
 
-function cleanItemArray(value: unknown, rewardById: Map<string, RewardItem>): string[] {
+function cleanItemArray(
+  content: SightWordsContent,
+  value: unknown,
+  rewardById: Map<string, RewardItem>,
+): string[] {
   if (!Array.isArray(value)) {
     return [];
   }
 
   return [
     ...new Set(
-      value.filter((itemId) => typeof itemId === "string" && rewardById.has(itemId)),
+      value
+        .filter((itemId): itemId is string => typeof itemId === "string")
+        .map((itemId) => resolveRewardId(content, itemId))
+        .filter((itemId) => rewardById.has(itemId)),
     ),
   ] as string[];
 }
@@ -537,6 +585,7 @@ function cleanMilestones(
 }
 
 function cleanPendingReward(
+  content: SightWordsContent,
   value: unknown,
   knownCount: number,
   rewardByIdMap: Map<string, RewardItem>,
@@ -548,7 +597,9 @@ function cleanPendingReward(
   }
 
   const source = value as Record<string, unknown>;
-  const itemId = typeof source.itemId === "string" ? source.itemId : "";
+  const itemId = typeof source.itemId === "string"
+    ? resolveRewardId(content, source.itemId)
+    : "";
   const milestone = Number.isInteger(source.milestone) ? Number(source.milestone) : 0;
   const reward = rewardByIdMap.get(itemId) || rewardByMilestoneMap.get(milestone);
 
@@ -557,6 +608,14 @@ function cleanPendingReward(
   }
 
   return { milestone: reward.milestone, itemId: reward.id };
+}
+
+function resolveRewardId(content: SightWordsContent, itemId: string): string {
+  return content.rewardAliases?.[itemId] || itemId;
+}
+
+function hasAnyWordBucket(buckets: WordBuckets): boolean {
+  return buckets.new.length > 0 || buckets.practice.length > 0 || buckets.known.length > 0;
 }
 
 function randomItem(items: number[]): number {

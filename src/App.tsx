@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { api } from "./api";
 import { Character, GearIcon } from "./GearArt";
@@ -6,11 +6,11 @@ import {
   MAZE_CHEST,
   MAZE_START,
   MOVE_DELTAS,
-  LANE_TOPS,
-  LEGACY_STORAGE_KEY,
   TRIP_TARGET,
   activeStage,
   activeStageState,
+  clearOfflineProgress,
+  clearPreviousLocalProgress,
   cloneProgress,
   completedFieldTripsFor,
   currentMazeLayout,
@@ -19,13 +19,11 @@ import {
   hasNextStage,
   isOpenMazeTile,
   isStageComplete,
-  loadLocalProgress,
-  readJsonStorage,
+  loadOfflineProgress,
   rewardById,
   sanitizeProgress,
-  saveLocalProgress,
+  saveOfflineProgress,
   selectWeightedWordIndex,
-  shouldUseWeightedNextWord,
   sortRewardIds,
   stageById,
   totalKnownCount,
@@ -60,6 +58,23 @@ interface LastAnswerAction {
   previousState: ProgressState;
 }
 
+interface WordCheckState {
+  stageId: number;
+  targetWordIndex: number;
+  promptWordIndex: number;
+  word: string;
+  choices: string[];
+  previousState: ProgressState;
+  remainingWordIndices: number[];
+  failedWordIndices: number[];
+  followUpsRemaining: number;
+}
+
+interface WordCheckFeedback {
+  choice: string;
+  correct: boolean;
+}
+
 interface MazeState {
   open: boolean;
   position: { row: number; col: number };
@@ -69,19 +84,20 @@ interface MazeState {
 
 interface TripCreature {
   x: number;
-  lane: number;
   name: string;
+  visualKey: string;
+  variant: number;
 }
 
 interface FieldTripState {
   open: boolean;
   stageId: number | null;
-  lane: number;
+  runnerX: number;
   progress: number;
   collected: number;
   creature: TripCreature | null;
   lastTime: number;
-  hopping: boolean;
+  swinging: boolean;
   message: string;
 }
 
@@ -116,8 +132,8 @@ type AppAction =
   | { type: "bumpMaze"; message: string }
   | { type: "openFieldTrip"; stageId: number; creature: TripCreature; message: string }
   | { type: "closeFieldTrip" }
-  | { type: "moveFieldTrip"; direction: "up" | "down" | "jump" }
-  | { type: "clearFieldTripHop" }
+  | { type: "moveFieldTrip"; direction: "left" | "right" | "hit"; creatures?: string[]; stageId?: number }
+  | { type: "clearFieldTripSwing" }
   | { type: "tickFieldTrip"; timestamp: number; creatures: string[] }
   | { type: "stopGames" };
 
@@ -134,17 +150,20 @@ const initialState: AppState = {
   fieldTrip: {
     open: false,
     stageId: null,
-    lane: 1,
+    runnerX: 16,
     progress: 0,
     collected: 0,
     creature: null,
     lastTime: 0,
-    hopping: false,
-    message: "Move lanes and collect friends.",
+    swinging: false,
+    message: "Move left or right and hit the monsters.",
   },
   loading: true,
   speaking: false,
 };
+
+const WORD_CHECK_CHANCE = 0.35;
+const WORD_CHECK_FOLLOW_UPS_AFTER_MISS = 2;
 
 function reducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
@@ -223,12 +242,12 @@ function reducer(state: AppState, action: AppAction): AppState {
         fieldTrip: {
           open: true,
           stageId: action.stageId,
-          lane: 1,
+          runnerX: 16,
           progress: 0,
           collected: 0,
           creature: action.creature,
           lastTime: 0,
-          hopping: false,
+          swinging: false,
           message: action.message,
         },
       };
@@ -242,33 +261,64 @@ function reducer(state: AppState, action: AppAction): AppState {
         return state;
       }
 
-      if (action.direction === "up") {
+      if (action.direction === "left") {
         return {
           ...state,
           fieldTrip: {
             ...state.fieldTrip,
-            lane: Math.max(0, state.fieldTrip.lane - 1),
+            runnerX: Math.max(10, state.fieldTrip.runnerX - 7),
           },
         };
       }
 
-      if (action.direction === "down") {
+      if (action.direction === "right") {
         return {
           ...state,
           fieldTrip: {
             ...state.fieldTrip,
-            lane: Math.min(2, state.fieldTrip.lane + 1),
+            runnerX: Math.min(48, state.fieldTrip.runnerX + 7),
           },
         };
       }
+
+      if (!state.fieldTrip.creature) {
+        return {
+          ...state,
+          fieldTrip: { ...state.fieldTrip, swinging: true },
+        };
+      }
+
+      const distance = Math.abs(state.fieldTrip.creature.x - state.fieldTrip.runnerX);
+
+      if (distance > 15) {
+        return {
+          ...state,
+          fieldTrip: {
+            ...state.fieldTrip,
+            swinging: true,
+            message: "Move closer, then hit.",
+          },
+        };
+      }
+
+      const collected = Math.min(TRIP_TARGET, state.fieldTrip.collected + 1);
 
       return {
         ...state,
-        fieldTrip: { ...state.fieldTrip, hopping: true },
+        fieldTrip: {
+          ...state.fieldTrip,
+          progress: Math.min(100, (collected / TRIP_TARGET) * 100),
+          collected,
+          creature: collected >= TRIP_TARGET
+            ? null
+            : spawnCreature(action.creatures || [], action.stageId || state.fieldTrip.stageId || 1),
+          swinging: true,
+          message: `${state.fieldTrip.creature.name} bonked! ${collected}/${TRIP_TARGET}`,
+        },
       };
     }
-    case "clearFieldTripHop":
-      return { ...state, fieldTrip: { ...state.fieldTrip, hopping: false } };
+    case "clearFieldTripSwing":
+      return { ...state, fieldTrip: { ...state.fieldTrip, swinging: false } };
     case "tickFieldTrip": {
       const trip = state.fieldTrip;
 
@@ -277,25 +327,26 @@ function reducer(state: AppState, action: AppAction): AppState {
       }
 
       const delta = trip.lastTime ? Math.min(50, action.timestamp - trip.lastTime) : 0;
-      let creature = { ...trip.creature, x: trip.creature.x - delta * 0.035 };
-      let collected = trip.collected;
+      const gap = trip.runnerX - trip.creature.x;
+      const speed = delta * 0.03;
+      const nextX = Math.abs(gap) <= 5
+        ? trip.creature.x
+        : trip.creature.x + Math.sign(gap) * speed;
+      const creature = {
+        ...trip.creature,
+        x: Math.max(8, Math.min(92, nextX)),
+      };
       let message = trip.message;
 
-      if (creature.x < 26 && creature.x > 7 && creature.lane === trip.lane) {
-        collected += 1;
-        message = `${creature.name} joined! ${collected}/${TRIP_TARGET}`;
-        creature = spawnCreature(action.creatures);
-      } else if (creature.x < -8) {
-        message = "Keep running. Another friend is coming.";
-        creature = spawnCreature(action.creatures);
+      if (Math.abs(creature.x - trip.runnerX) <= 9) {
+        message = `${creature.name} is close. Hit!`;
       }
 
       return {
         ...state,
         fieldTrip: {
           ...trip,
-          progress: Math.min(100, trip.progress + delta * 0.006),
-          collected,
+          progress: Math.min(100, (trip.collected / TRIP_TARGET) * 100),
           creature,
           lastTime: action.timestamp,
           message,
@@ -317,24 +368,100 @@ function reducer(state: AppState, action: AppAction): AppState {
 
 export default function App() {
   const [state, dispatch] = useReducer(reducer, initialState);
+  const [inventoryOpen, setInventoryOpen] = useState(false);
+  const [wordCheck, setWordCheck] = useState<WordCheckState | null>(null);
+  const [wordCheckFeedback, setWordCheckFeedback] = useState<WordCheckFeedback | null>(null);
   const stateRef = useRef(state);
   const autoAdvanceTimer = useRef<number>(0);
-  const syncTimer = useRef<number>(0);
+  const queuedProgress = useRef<ProgressState | null>(null);
+  const syncInFlight = useRef(false);
+  const wordCheckFeedbackTimer = useRef<number>(0);
+  const pendingWordCheckIndices = useRef<Record<number, number[]>>({});
 
   stateRef.current = state;
+
+  const flushProgressToServer = useCallback(async () => {
+    const current = stateRef.current;
+    const user = current.user;
+
+    if (!user || syncInFlight.current) {
+      return;
+    }
+
+    if (!queuedProgress.current && current.content) {
+      queuedProgress.current = loadOfflineProgress(current.content, user.id);
+    }
+
+    if (!queuedProgress.current) {
+      return;
+    }
+
+    syncInFlight.current = true;
+    let recoveredOfflineProgress = Boolean(
+      current.content && loadOfflineProgress(current.content, user.id),
+    );
+
+    try {
+      while (queuedProgress.current) {
+        const progressToSave = queuedProgress.current;
+        queuedProgress.current = null;
+
+        try {
+          const result = await api<ProgressResponse>("/api/progress", {
+            method: "PUT",
+            body: { progress: progressToSave },
+          });
+
+          if (queuedProgress.current) {
+            continue;
+          }
+
+          const latest = stateRef.current;
+
+          clearOfflineProgress(user.id);
+          clearPreviousLocalProgress();
+
+          if (latest.user?.id !== user.id || !latest.content) {
+            return;
+          }
+
+          const syncedProgress = sanitizeProgress(latest.content, result.progress);
+          dispatch({ type: "setProgress", progress: syncedProgress });
+          dispatch({
+            type: "setAuthMessage",
+            message: recoveredOfflineProgress ? "Back online. Progress synced." : "",
+          });
+          recoveredOfflineProgress = false;
+        } catch {
+          const latestProgress = queuedProgress.current || progressToSave;
+          queuedProgress.current = latestProgress;
+          const savedOffline = saveOfflineProgress(user.id, latestProgress);
+
+          dispatch({
+            type: "setAuthMessage",
+            message: savedOffline
+              ? "Offline. Progress is saved on this device and will sync automatically."
+              : "Server unavailable. Keep this page open so progress can retry.",
+          });
+          return;
+        }
+      }
+    } finally {
+      syncInFlight.current = false;
+    }
+  }, []);
 
   const commitProgress = useCallback((nextProgress: ProgressState, options: {
     sync?: boolean;
     lastAnswerAction?: LastAnswerAction | null;
-  } = {}) => {
+  } = {}): ProgressState | null => {
     const content = stateRef.current.content;
 
     if (!content) {
-      return;
+      return null;
     }
 
     const cleanProgress = sanitizeProgress(content, nextProgress);
-    saveLocalProgress(cleanProgress);
     dispatch({
       type: "setProgress",
       progress: cleanProgress,
@@ -342,31 +469,24 @@ export default function App() {
     });
 
     if (stateRef.current.user && options.sync !== false) {
-      window.clearTimeout(syncTimer.current);
-      syncTimer.current = window.setTimeout(async () => {
-        try {
-          const result = await api<ProgressResponse>("/api/progress", {
-            method: "PUT",
-            body: { progress: cleanProgress },
-          });
-          const latestContent = stateRef.current.content;
+      const user = stateRef.current.user;
+      queuedProgress.current = cleanProgress;
 
-          if (!latestContent) {
-            return;
-          }
-
-          const syncedProgress = sanitizeProgress(latestContent, result.progress);
-          saveLocalProgress(syncedProgress);
-          dispatch({ type: "setProgress", progress: syncedProgress });
-        } catch {
-          dispatch({
-            type: "setAuthMessage",
-            message: "Progress is saved here and will sync after login works.",
-          });
-        }
-      }, 350);
+      if (window.navigator.onLine === false) {
+        const savedOffline = saveOfflineProgress(user.id, cleanProgress);
+        dispatch({
+          type: "setAuthMessage",
+          message: savedOffline
+            ? "Offline. Progress is saved on this device and will sync automatically."
+            : "Server unavailable. Keep this page open so progress can retry.",
+        });
+      } else {
+        void flushProgressToServer();
+      }
     }
-  }, []);
+
+    return cleanProgress;
+  }, [flushProgressToServer]);
 
   const clearAutoAdvance = useCallback(() => {
     if (autoAdvanceTimer.current) {
@@ -475,8 +595,8 @@ export default function App() {
     dispatch({
       type: "openFieldTrip",
       stageId: stage.id,
-      creature: spawnCreature(stage.fieldTrip.creatures),
-      message: `Collect ${TRIP_TARGET} friends and reach the finish.`,
+      creature: spawnCreature(stage.fieldTrip.creatures, stage.id),
+      message: `Bonk ${TRIP_TARGET} monsters to unlock the next stage.`,
     });
   }, [clearAutoAdvance, stopSpeech]);
 
@@ -505,6 +625,34 @@ export default function App() {
       advanceToNextWord();
     }, delay);
   }, [clearAutoAdvance]);
+
+  const rememberWordCheckCandidate = useCallback((stageId: number, wordIndex: number) => {
+    const currentStageIndices = pendingWordCheckIndices.current[stageId] || [];
+
+    if (!currentStageIndices.includes(wordIndex)) {
+      pendingWordCheckIndices.current[stageId] = [...currentStageIndices, wordIndex];
+    }
+  }, []);
+
+  const forgetWordCheckCandidate = useCallback((stageId: number, wordIndex: number) => {
+    const currentStageIndices = pendingWordCheckIndices.current[stageId] || [];
+    pendingWordCheckIndices.current[stageId] = currentStageIndices.filter(
+      (candidateIndex) => candidateIndex !== wordIndex,
+    );
+  }, []);
+
+  const clearWordCheckCandidates = useCallback((stageId: number) => {
+    pendingWordCheckIndices.current[stageId] = [];
+  }, []);
+
+  const clearWordCheckFeedback = useCallback(() => {
+    if (wordCheckFeedbackTimer.current) {
+      window.clearTimeout(wordCheckFeedbackTimer.current);
+      wordCheckFeedbackTimer.current = 0;
+    }
+
+    setWordCheckFeedback(null);
+  }, []);
 
   const goToWord = useCallback((nextIndex: number) => {
     const current = stateRef.current;
@@ -549,40 +697,59 @@ export default function App() {
       return;
     }
 
-    if (!shouldUseWeightedNextWord(current.content, current.progress)) {
-      goToWord(stageState.currentIndex + 1);
-      return;
-    }
-
     const nextWordIndex = selectWeightedWordIndex(current.content, current.progress);
     const nextDeckIndex =
       nextWordIndex === null ? -1 : stageState.deckOrder.indexOf(nextWordIndex);
     goToWord(nextDeckIndex === -1 ? stageState.currentIndex + 1 : nextDeckIndex);
   }, [goToWord, openFieldTrip]);
 
-  const markKnown = useCallback(() => {
+  const applyKnownWord = useCallback(({
+    stageId,
+    wordIndex,
+    previousState,
+    speak = true,
+  }: {
+    stageId: number;
+    wordIndex: number;
+    previousState: ProgressState;
+    speak?: boolean;
+  }) => {
     const current = stateRef.current;
 
-    if (!current.content || !current.progress || !requireAuthenticated()) {
+    if (!current.content) {
       return;
     }
 
     clearAutoAdvance();
-    const stage = activeStage(current.content, current.progress);
-    const stageState = activeStageState(current.content, current.progress);
-    const word = currentWordFor(current.content, current.progress);
+    const stage = stageById(current.content, stageId);
+    const word = stage.words[wordIndex];
+
+    if (!word) {
+      return;
+    }
+
+    const nextProgress = cloneProgress(previousState);
+    nextProgress.activeStageId = stage.id;
+    const previousStageState = previousState.stages[String(stage.id)];
+    const nextStageState = nextProgress.stages[String(stage.id)];
+
+    if (!previousStageState || !nextStageState) {
+      return;
+    }
+
     const answerSnapshot: LastAnswerAction = {
       stageId: stage.id,
-      wordIndex: stage.words.indexOf(word),
-      previousState: cloneProgress(current.progress),
+      wordIndex,
+      previousState: cloneProgress(previousState),
     };
-    const nextProgress = cloneProgress(current.progress);
-    const nextStageState = activeStageState(current.content, nextProgress);
     const knownWords = new Set(nextStageState.knownWords);
     const practiceWords = new Set(nextStageState.practiceWords);
-    const previousKnownCount = stageState.knownWords.length;
+    const previousKnownCount = previousStageState.knownWords.length;
 
-    speakWord(word, { clearAutoAdvance: false });
+    if (speak) {
+      speakWord(word, { clearAutoAdvance: false });
+    }
+
     knownWords.add(word);
     practiceWords.delete(word);
     nextStageState.knownWords = stage.words.filter((stageWord) => knownWords.has(stageWord));
@@ -621,10 +788,147 @@ export default function App() {
     commitProgress,
     handleStageComplete,
     openPendingMaze,
-    requireAuthenticated,
     scheduleNextWord,
     showCelebration,
     speakWord,
+  ]);
+
+  const applyPracticeWord = useCallback(({
+    stageId,
+    wordIndex,
+    previousState,
+    speak = true,
+    message,
+    advance = true,
+  }: {
+    stageId: number;
+    wordIndex: number;
+    previousState: ProgressState;
+    speak?: boolean;
+    message?: string;
+    advance?: boolean;
+  }): ProgressState | null => {
+    const current = stateRef.current;
+
+    if (!current.content) {
+      return null;
+    }
+
+    clearAutoAdvance();
+    const stage = stageById(current.content, stageId);
+    const word = stage.words[wordIndex];
+
+    if (!word) {
+      return null;
+    }
+
+    const nextProgress = cloneProgress(previousState);
+    nextProgress.activeStageId = stage.id;
+    const nextStageState = nextProgress.stages[String(stage.id)];
+
+    if (!nextStageState) {
+      return null;
+    }
+
+    const answerSnapshot: LastAnswerAction = {
+      stageId: stage.id,
+      wordIndex,
+      previousState: cloneProgress(previousState),
+    };
+    const knownWords = new Set(nextStageState.knownWords);
+    const practiceWords = new Set(nextStageState.practiceWords);
+
+    if (speak) {
+      speakWord(word, { clearAutoAdvance: false });
+    }
+
+    knownWords.delete(word);
+    practiceWords.add(word);
+    nextStageState.knownWords = stage.words.filter((stageWord) => knownWords.has(stageWord));
+    nextStageState.practiceWords = stage.words.filter((stageWord) => practiceWords.has(stageWord));
+    forgetWordCheckCandidate(stage.id, wordIndex);
+    const committedProgress = commitProgress(nextProgress, { lastAnswerAction: answerSnapshot });
+
+    if (message) {
+      showCelebration(message);
+    }
+
+    if (advance) {
+      scheduleNextWord(900);
+    }
+
+    return committedProgress;
+  }, [
+    clearAutoAdvance,
+    commitProgress,
+    forgetWordCheckCandidate,
+    scheduleNextWord,
+    showCelebration,
+    speakWord,
+  ]);
+
+  const markKnown = useCallback(() => {
+    const current = stateRef.current;
+
+    if (!current.content || !current.progress || !requireAuthenticated()) {
+      return;
+    }
+
+    clearAutoAdvance();
+    const stage = activeStage(current.content, current.progress);
+    const stageState = activeStageState(current.content, current.progress);
+    const word = currentWordFor(current.content, current.progress);
+    const wordIndex = stage.words.indexOf(word);
+    const previousState = cloneProgress(current.progress);
+    const isNewKnownWord = !stageState.knownWords.includes(word);
+    const candidateWordIndices = buildWordCheckCandidateIndices(
+      stage,
+      stageState,
+      pendingWordCheckIndices.current[stage.id] || [],
+      wordIndex,
+    );
+    const shouldCheck =
+      isNewKnownWord &&
+      !wordCheck &&
+      stage.words.length > 1 &&
+      candidateWordIndices.length > 0 &&
+      Math.random() < WORD_CHECK_CHANCE;
+
+    if (shouldCheck) {
+      const nextCheck = createWordCheckState({
+        stage,
+        targetWordIndex: wordIndex,
+        candidateWordIndices,
+        previousState,
+        failedWordIndices: [],
+        followUpsRemaining: 0,
+      });
+
+      if (nextCheck) {
+        clearWordCheckFeedback();
+        setWordCheck(nextCheck);
+        speakWord(nextCheck.word, { clearAutoAdvance: false });
+        return;
+      }
+
+      rememberWordCheckCandidate(stage.id, wordIndex);
+      applyKnownWord({ stageId: stage.id, wordIndex, previousState });
+      return;
+    }
+
+    if (isNewKnownWord) {
+      rememberWordCheckCandidate(stage.id, wordIndex);
+    }
+
+    applyKnownWord({ stageId: stage.id, wordIndex, previousState });
+  }, [
+    applyKnownWord,
+    clearAutoAdvance,
+    clearWordCheckFeedback,
+    rememberWordCheckCandidate,
+    requireAuthenticated,
+    speakWord,
+    wordCheck,
   ]);
 
   const markPractice = useCallback(() => {
@@ -637,24 +941,152 @@ export default function App() {
     clearAutoAdvance();
     const stage = activeStage(current.content, current.progress);
     const word = currentWordFor(current.content, current.progress);
-    const answerSnapshot: LastAnswerAction = {
+    applyPracticeWord({
       stageId: stage.id,
       wordIndex: stage.words.indexOf(word),
       previousState: cloneProgress(current.progress),
-    };
-    const nextProgress = cloneProgress(current.progress);
-    const nextStageState = activeStageState(current.content, nextProgress);
-    const knownWords = new Set(nextStageState.knownWords);
-    const practiceWords = new Set(nextStageState.practiceWords);
+    });
+  }, [applyPracticeWord, clearAutoAdvance, requireAuthenticated]);
 
-    speakWord(word, { clearAutoAdvance: false });
-    knownWords.delete(word);
-    practiceWords.add(word);
-    nextStageState.knownWords = stage.words.filter((stageWord) => knownWords.has(stageWord));
-    nextStageState.practiceWords = stage.words.filter((stageWord) => practiceWords.has(stageWord));
-    commitProgress(nextProgress, { lastAnswerAction: answerSnapshot });
+  const playWordCheck = useCallback(() => {
+    if (!wordCheck) {
+      return;
+    }
+
+    speakWord(wordCheck.word);
+  }, [speakWord, wordCheck]);
+
+  const answerWordCheck = useCallback((choice: string) => {
+    if (!wordCheck) {
+      return;
+    }
+
+    const current = stateRef.current;
+
+    if (!current.content) {
+      return;
+    }
+
+    const check = wordCheck;
+    const stage = stageById(current.content, check.stageId);
+
+    if (choice === check.word) {
+      const followUpsRemaining = Math.max(0, check.followUpsRemaining - 1);
+
+      if (followUpsRemaining > 0 && check.remainingWordIndices.length > 0) {
+        const nextCheck = createWordCheckState({
+          stage,
+          targetWordIndex: check.targetWordIndex,
+          candidateWordIndices: check.remainingWordIndices,
+          previousState: check.previousState,
+          failedWordIndices: check.failedWordIndices,
+          followUpsRemaining,
+        });
+
+        if (nextCheck) {
+          setWordCheck(nextCheck);
+          speakWord(nextCheck.word, { clearAutoAdvance: false });
+          return;
+        }
+      }
+
+      setWordCheck(null);
+      clearWordCheckCandidates(check.stageId);
+
+      if (check.failedWordIndices.includes(check.targetWordIndex)) {
+        showCelebration("Practice this one");
+        scheduleNextWord(900);
+        return;
+      }
+
+      applyKnownWord({
+        stageId: check.stageId,
+        wordIndex: check.targetWordIndex,
+        previousState: check.previousState,
+        speak: false,
+      });
+      return;
+    }
+
+    const failedWordIndices = [...new Set([
+      ...check.failedWordIndices,
+      check.promptWordIndex,
+    ])];
+    const committedProgress = applyPracticeWord({
+      stageId: check.stageId,
+      wordIndex: check.promptWordIndex,
+      previousState: check.previousState,
+      speak: false,
+      message: "Practice this one",
+      advance: false,
+    });
+    const nextCandidateWordIndices = check.remainingWordIndices.filter(
+      (candidateIndex) => !failedWordIndices.includes(candidateIndex),
+    );
+    const nextFollowUpsRemaining = Math.max(
+      check.followUpsRemaining,
+      WORD_CHECK_FOLLOW_UPS_AFTER_MISS,
+    );
+
+    if (nextCandidateWordIndices.length > 0) {
+      const nextCheck = createWordCheckState({
+        stage,
+        targetWordIndex: check.targetWordIndex,
+        candidateWordIndices: nextCandidateWordIndices,
+        previousState: committedProgress || check.previousState,
+        failedWordIndices,
+        followUpsRemaining: nextFollowUpsRemaining,
+      });
+
+      if (nextCheck) {
+        setWordCheck(nextCheck);
+        speakWord(nextCheck.word, { clearAutoAdvance: false });
+        return;
+      }
+    }
+
+    setWordCheck(null);
+    clearWordCheckCandidates(check.stageId);
+
+    if (!failedWordIndices.includes(check.targetWordIndex)) {
+      applyKnownWord({
+        stageId: check.stageId,
+        wordIndex: check.targetWordIndex,
+        previousState: committedProgress || check.previousState,
+        speak: false,
+      });
+      return;
+    }
+
     scheduleNextWord(900);
-  }, [clearAutoAdvance, commitProgress, requireAuthenticated, scheduleNextWord, speakWord]);
+  }, [
+    applyKnownWord,
+    applyPracticeWord,
+    clearWordCheckCandidates,
+    scheduleNextWord,
+    showCelebration,
+    speakWord,
+    wordCheck,
+  ]);
+
+  const chooseWordCheck = useCallback((choice: string) => {
+    if (!wordCheck || wordCheckFeedback) {
+      return;
+    }
+
+    const correct = choice === wordCheck.word;
+    setWordCheckFeedback({ choice, correct });
+
+    if (wordCheckFeedbackTimer.current) {
+      window.clearTimeout(wordCheckFeedbackTimer.current);
+    }
+
+    wordCheckFeedbackTimer.current = window.setTimeout(() => {
+      wordCheckFeedbackTimer.current = 0;
+      setWordCheckFeedback(null);
+      answerWordCheck(choice);
+    }, 650);
+  }, [answerWordCheck, wordCheck, wordCheckFeedback]);
 
   const goBackOrUndo = useCallback(() => {
     const current = stateRef.current;
@@ -725,8 +1157,17 @@ export default function App() {
 
     stopSpeech();
     dispatch({ type: "stopGames" });
+    clearWordCheckFeedback();
+    setWordCheck(null);
+    pendingWordCheckIndices.current = {};
     commitProgress(defaultProgress(current.content), { lastAnswerAction: null });
-  }, [clearAutoAdvance, commitProgress, requireAuthenticated, stopSpeech]);
+  }, [
+    clearAutoAdvance,
+    clearWordCheckFeedback,
+    commitProgress,
+    requireAuthenticated,
+    stopSpeech,
+  ]);
 
   const toggleGearItem = useCallback((itemId: string) => {
     const current = stateRef.current;
@@ -827,15 +1268,25 @@ export default function App() {
     }
   }, [commitProgress, handleStageComplete, scheduleNextWord, showCelebration]);
 
-  const moveFieldTrip = useCallback((direction: "up" | "down" | "jump") => {
+  const moveFieldTrip = useCallback((direction: "left" | "right" | "hit") => {
     if (!requireAuthenticated()) {
       return;
     }
 
-    dispatch({ type: "moveFieldTrip", direction });
+    const current = stateRef.current;
+    const stage = current.content && current.fieldTrip.stageId !== null
+      ? stageById(current.content, current.fieldTrip.stageId)
+      : null;
 
-    if (direction === "jump") {
-      window.setTimeout(() => dispatch({ type: "clearFieldTripHop" }), 180);
+    dispatch({
+      type: "moveFieldTrip",
+      direction,
+      creatures: stage?.fieldTrip.creatures,
+      stageId: stage?.id,
+    });
+
+    if (direction === "hit") {
+      window.setTimeout(() => dispatch({ type: "clearFieldTripSwing" }), 180);
     }
   }, [requireAuthenticated]);
 
@@ -873,7 +1324,7 @@ export default function App() {
     showCelebration(stage.fieldTrip.finish);
   }, [commitProgress, showCelebration]);
 
-  const authenticate = useCallback(async (mode: "login" | "signup", email: string, password: string) => {
+  const authenticate = useCallback(async (mode: "login" | "signup", username: string, password: string) => {
     const current = stateRef.current;
 
     if (!current.content || !current.progress) {
@@ -888,19 +1339,37 @@ export default function App() {
     try {
       const result = await api<AuthResponse>(`/api/auth/${mode}`, {
         method: "POST",
-        body: { email, password },
+        body: { username, password },
       });
-      const imported = await api<ProgressResponse>("/api/progress/import-local", {
-        method: "POST",
-        body: { progress: current.progress },
-      });
-      const nextProgress = sanitizeProgress(current.content, imported.progress || result.progress);
-      saveLocalProgress(nextProgress);
+      const offlineProgress = loadOfflineProgress(current.content, result.user.id);
+      let nextProgress = sanitizeProgress(current.content, result.progress);
+      let message = "";
+
+      if (offlineProgress) {
+        try {
+          const synced = await api<ProgressResponse>("/api/progress", {
+            method: "PUT",
+            body: { progress: offlineProgress },
+          });
+          nextProgress = sanitizeProgress(current.content, synced.progress);
+          clearOfflineProgress(result.user.id);
+          message = "Back online. Progress synced.";
+        } catch {
+          nextProgress = offlineProgress;
+          queuedProgress.current = offlineProgress;
+          message = "Offline. Progress is saved on this device and will sync automatically.";
+        }
+      }
+
+      clearPreviousLocalProgress();
+      pendingWordCheckIndices.current = {};
+      clearWordCheckFeedback();
+      setWordCheck(null);
       dispatch({
         type: "accountReady",
         user: result.user,
         progress: nextProgress,
-        message: "Progress is syncing to your account.",
+        message,
       });
 
       window.setTimeout(openPendingMaze, 0);
@@ -910,7 +1379,32 @@ export default function App() {
         message: error instanceof Error ? error.message : "Could not log in.",
       });
     }
-  }, [openPendingMaze]);
+  }, [clearWordCheckFeedback, openPendingMaze]);
+
+  const updateAccountEmail = useCallback(async (email: string) => {
+    dispatch({
+      type: "setAuthMessage",
+      message: "Saving account settings...",
+    });
+
+    try {
+      const result = await api<MeResponse>("/api/me", {
+        method: "PUT",
+        body: { email },
+      });
+
+      dispatch({
+        type: "setUser",
+        user: result.user,
+        message: "Account settings saved.",
+      });
+    } catch (error) {
+      dispatch({
+        type: "setAuthMessage",
+        message: error instanceof Error ? error.message : "Could not save settings.",
+      });
+    }
+  }, []);
 
   const logout = useCallback(async () => {
     try {
@@ -922,8 +1416,13 @@ export default function App() {
     clearAutoAdvance();
     stopSpeech();
     dispatch({ type: "stopGames" });
+    setInventoryOpen(false);
+    clearWordCheckFeedback();
+    setWordCheck(null);
+    pendingWordCheckIndices.current = {};
+    queuedProgress.current = null;
     dispatch({ type: "setUser", user: null, message: "Logged out. Log in or sign up to play." });
-  }, [clearAutoAdvance, stopSpeech]);
+  }, [clearAutoAdvance, clearWordCheckFeedback, stopSpeech]);
 
   useEffect(() => {
     let cancelled = false;
@@ -931,13 +1430,13 @@ export default function App() {
     async function initialize() {
       try {
         const content = await api<SightWordsContent>("/api/content");
-        const localProgress = loadLocalProgress(content);
+        const initialProgress = defaultProgress(content);
 
         if (cancelled) {
           return;
         }
 
-        dispatch({ type: "bootstrapped", content, progress: localProgress });
+        dispatch({ type: "bootstrapped", content, progress: initialProgress });
 
         try {
           const me = await api<MeResponse>("/api/me");
@@ -955,23 +1454,40 @@ export default function App() {
             return;
           }
 
-          const serverProgress = await api<ProgressResponse>("/api/progress");
-          const cleanServerProgress = sanitizeProgress(content, serverProgress.progress);
-          const localKnown = totalKnownCount(content, localProgress);
-          const serverKnown = totalKnownCount(content, cleanServerProgress);
-          let nextProgress = cleanServerProgress;
+          const offlineProgress = loadOfflineProgress(content, me.user.id);
+          let nextProgress: ProgressState;
           let message = "";
 
-          if (localKnown > serverKnown || readJsonStorage(LEGACY_STORAGE_KEY)) {
-            const imported = await api<ProgressResponse>("/api/progress/import-local", {
-              method: "POST",
-              body: { progress: localProgress },
-            });
-            nextProgress = sanitizeProgress(content, imported.progress);
-            message = "Progress imported and synced.";
+          try {
+            const serverProgress = await api<ProgressResponse>("/api/progress");
+            nextProgress = sanitizeProgress(content, serverProgress.progress);
+          } catch (error) {
+            if (!offlineProgress) {
+              throw error;
+            }
+
+            nextProgress = offlineProgress;
+            queuedProgress.current = offlineProgress;
+            message = "Offline. Progress is saved on this device and will sync automatically.";
           }
 
-          saveLocalProgress(nextProgress);
+          if (offlineProgress && message === "") {
+            try {
+              const synced = await api<ProgressResponse>("/api/progress", {
+                method: "PUT",
+                body: { progress: offlineProgress },
+              });
+              nextProgress = sanitizeProgress(content, synced.progress);
+              clearOfflineProgress(me.user.id);
+              message = "Back online. Progress synced.";
+            } catch {
+              nextProgress = offlineProgress;
+              queuedProgress.current = offlineProgress;
+              message = "Offline. Progress is saved on this device and will sync automatically.";
+            }
+          }
+
+          clearPreviousLocalProgress();
           dispatch({
             type: "accountReady",
             user: me.user,
@@ -986,7 +1502,9 @@ export default function App() {
           dispatch({
             type: "accountReady",
             user: null,
-            message: "Log in or sign up to play.",
+            message: window.navigator.onLine === false
+              ? "Server unavailable. Reconnect to log in."
+              : "Log in or sign up to play.",
           });
         }
       } catch {
@@ -1007,6 +1525,29 @@ export default function App() {
   }, [openPendingMaze]);
 
   useEffect(() => {
+    const retrySync = () => {
+      void flushProgressToServer();
+    };
+    const retryVisibleSync = () => {
+      if (document.visibilityState === "visible") {
+        retrySync();
+      }
+    };
+    const interval = window.setInterval(retrySync, 10_000);
+
+    window.addEventListener("online", retrySync);
+    window.addEventListener("focus", retrySync);
+    document.addEventListener("visibilitychange", retryVisibleSync);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("online", retrySync);
+      window.removeEventListener("focus", retrySync);
+      document.removeEventListener("visibilitychange", retryVisibleSync);
+    };
+  }, [flushProgressToServer, state.user?.id]);
+
+  useEffect(() => {
     const current = stateRef.current;
     const stage = current.content && current.progress
       ? activeStage(current.content, current.progress)
@@ -1019,7 +1560,15 @@ export default function App() {
     document.body.classList.toggle("is-speaking", state.speaking);
     document.body.classList.toggle("maze-is-open", state.maze.open);
     document.body.classList.toggle("trip-is-open", state.fieldTrip.open);
-  }, [state.user, state.speaking, state.maze.open, state.fieldTrip.open, state.content, state.progress]);
+    document.body.classList.toggle("inventory-is-open", inventoryOpen);
+    document.body.classList.toggle("word-check-is-open", Boolean(wordCheck));
+  }, [state.user, state.speaking, state.maze.open, state.fieldTrip.open, state.content, state.progress, inventoryOpen, wordCheck]);
+
+  useEffect(() => () => {
+    if (wordCheckFeedbackTimer.current) {
+      window.clearTimeout(wordCheckFeedbackTimer.current);
+    }
+  }, []);
 
   useEffect(() => {
     if (!state.fieldTrip.open || state.fieldTrip.stageId === null || !state.content) {
@@ -1045,22 +1594,27 @@ export default function App() {
   useEffect(() => {
     if (
       state.fieldTrip.open &&
-      state.fieldTrip.progress >= 100 &&
       state.fieldTrip.collected >= TRIP_TARGET
     ) {
       completeFieldTrip();
     }
-  }, [state.fieldTrip.open, state.fieldTrip.progress, state.fieldTrip.collected, completeFieldTrip]);
+  }, [state.fieldTrip.open, state.fieldTrip.collected, completeFieldTrip]);
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const current = stateRef.current;
+	  useEffect(() => {
+	    const handleKeyDown = (event: KeyboardEvent) => {
+	      const current = stateRef.current;
 
-      if (!current.user) {
+	      if (!current.user) {
+	        return;
+	      }
+
+      if (inventoryOpen && event.key === "Escape") {
+        event.preventDefault();
+        setInventoryOpen(false);
         return;
       }
 
-      if (current.maze.open) {
+	      if (current.maze.open) {
         const directionByKey: Record<string, keyof typeof MOVE_DELTAS | undefined> = {
           ArrowUp: "up",
           ArrowDown: "down",
@@ -1077,10 +1631,11 @@ export default function App() {
       }
 
       if (current.fieldTrip.open) {
-        const directionByKey: Record<string, "up" | "down" | "jump" | undefined> = {
-          ArrowUp: "up",
-          ArrowDown: "down",
-          " ": "jump",
+        const directionByKey: Record<string, "left" | "right" | "hit" | undefined> = {
+          ArrowLeft: "left",
+          ArrowRight: "right",
+          " ": "hit",
+          Enter: "hit",
         };
         const direction = directionByKey[event.key];
 
@@ -1093,7 +1648,7 @@ export default function App() {
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [moveFieldTrip, moveMaze]);
+	  }, [inventoryOpen, moveFieldTrip, moveMaze]);
 
   useEffect(() => {
     const handleBeforeUnload = () => {
@@ -1116,6 +1671,8 @@ export default function App() {
     const word = currentWordFor(state.content, state.progress);
     const knownSet = new Set(stageState.knownWords);
     const practiceSet = new Set(stageState.practiceWords);
+    const equipped = new Set(stageState.equippedItems);
+    const equippedRewards = stage.rewards.filter((reward) => equipped.has(reward.id));
     const knownCount = stageState.knownWords.length;
 
     return {
@@ -1124,6 +1681,7 @@ export default function App() {
       word,
       knownSet,
       practiceSet,
+      equippedRewards,
       knownCount,
       practiceCount: stageState.practiceWords.length,
       leftCount: stage.words.length - knownCount,
@@ -1146,7 +1704,7 @@ export default function App() {
     );
   }
 
-  const { stage, stageState, word, knownSet, practiceSet } = viewModel;
+  const { stage, stageState, word, knownSet, practiceSet, equippedRewards } = viewModel;
 
   return (
     <>
@@ -1161,6 +1719,7 @@ export default function App() {
             user={state.user}
             message={state.authMessage}
             onAuthenticate={authenticate}
+            onUpdateEmail={updateAccountEmail}
             onLogout={logout}
           />
         </header>
@@ -1194,6 +1753,7 @@ export default function App() {
               word={word}
               known={knownSet.has(word)}
               practice={practiceSet.has(word)}
+              equippedRewards={equippedRewards}
               celebration={state.celebration}
               celebrationKey={state.celebrationKey}
             />
@@ -1262,15 +1822,29 @@ export default function App() {
 
           <ProgressPanel
             content={state.content}
-            progress={state.progress}
             stage={stage}
             stageState={stageState}
             knownPercent={viewModel.knownPercent}
             onStartFieldTrip={() => openFieldTrip(stage.id)}
-            onToggleGear={toggleGearItem}
+            onOpenInventory={() => setInventoryOpen(true)}
           />
         </main>
       </div>
+
+      <InventoryOverlay
+        open={inventoryOpen}
+        stage={stage}
+        stageState={stageState}
+        onClose={() => setInventoryOpen(false)}
+        onToggleGear={toggleGearItem}
+      />
+
+      <WordCheckOverlay
+        check={wordCheck}
+        feedback={wordCheckFeedback}
+        onPlay={playWordCheck}
+        onChoose={chooseWordCheck}
+      />
 
       <MazeOverlay
         open={state.maze.open}
@@ -1310,24 +1884,49 @@ function AuthPanel({
   user,
   message,
   onAuthenticate,
+  onUpdateEmail,
   onLogout,
 }: {
   user: User | null;
   message: string;
-  onAuthenticate: (mode: "login" | "signup", email: string, password: string) => void;
+  onAuthenticate: (mode: "login" | "signup", username: string, password: string) => void;
+  onUpdateEmail: (email: string) => void;
   onLogout: () => void;
 }) {
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [settingsEmail, setSettingsEmail] = useState(user?.email || "");
+
+  useEffect(() => {
+    setSettingsEmail(user?.email || "");
+  }, [user?.email]);
 
   if (user) {
     return (
       <section className="auth-panel" aria-label="Account">
         <div className="auth-user">
           <Icon name="user" />
-          <span>{user.email}</span>
+          <span>{user.username}</span>
           <button className="auth-button secondary" type="button" onClick={onLogout}>Log out</button>
         </div>
+        <form
+          className="account-settings"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onUpdateEmail(settingsEmail);
+          }}
+        >
+          <label className="sr-only" htmlFor="accountEmail">Email</label>
+          <input
+            id="accountEmail"
+            type="email"
+            autoComplete="email"
+            placeholder="Email (optional)"
+            value={settingsEmail}
+            onChange={(event) => setSettingsEmail(event.currentTarget.value)}
+          />
+          <button className="auth-button" type="submit">Save</button>
+        </form>
         <p className="auth-message" role="status" aria-live="polite">{message}</p>
       </section>
     );
@@ -1339,17 +1938,18 @@ function AuthPanel({
         className="auth-form"
         onSubmit={(event) => {
           event.preventDefault();
-          onAuthenticate("login", email, password);
+          onAuthenticate("login", username, password);
           setPassword("");
         }}
       >
         <input
-          type="email"
-          autoComplete="email"
-          placeholder="Email"
-          aria-label="Email"
-          value={email}
-          onChange={(event) => setEmail(event.currentTarget.value)}
+          type="text"
+          autoComplete="username"
+          inputMode="text"
+          placeholder="Username"
+          aria-label="Username"
+          value={username}
+          onChange={(event) => setUsername(event.currentTarget.value)}
         />
         <input
           type="password"
@@ -1364,7 +1964,7 @@ function AuthPanel({
           className="auth-button secondary"
           type="button"
           onClick={() => {
-            onAuthenticate("signup", email, password);
+            onAuthenticate("signup", username, password);
             setPassword("");
           }}
         >
@@ -1430,6 +2030,7 @@ function WordCard({
   word,
   known,
   practice,
+  equippedRewards,
   celebration,
   celebrationKey,
 }: {
@@ -1438,9 +2039,53 @@ function WordCard({
   word: string;
   known: boolean;
   practice: boolean;
+  equippedRewards: RewardItem[];
   celebration: string;
   celebrationKey: number;
 }) {
+  const wordRef = useRef<HTMLDivElement>(null);
+  const [wordFontSize, setWordFontSize] = useState(MAX_WORD_FONT_SIZE);
+
+  useLayoutEffect(() => {
+    const wordElement = wordRef.current;
+
+    if (!wordElement) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    const updateWordSize = () => {
+      if (cancelled) {
+        return;
+      }
+
+      const nextSize = fittedWordFontSize(word, wordElement.clientWidth);
+      setWordFontSize((currentSize) =>
+        Math.abs(currentSize - nextSize) > 0.5 ? nextSize : currentSize,
+      );
+    };
+
+    updateWordSize();
+
+    if (document.fonts?.ready) {
+      document.fonts.ready.then(updateWordSize).catch(() => undefined);
+    }
+
+    if (typeof ResizeObserver === "undefined") {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const observer = new ResizeObserver(updateWordSize);
+    observer.observe(wordElement);
+
+    return () => {
+      cancelled = true;
+      observer.disconnect();
+    };
+  }, [word]);
+
   return (
     <div className="word-card">
       <div className="star-field" aria-hidden="true">
@@ -1449,8 +2094,18 @@ function WordCard({
         <svg className="star star-c" viewBox="0 0 24 24" focusable="false"><use href="#icon-star" /></svg>
       </div>
       <p className="word-position">{stage.title} - Word {stageState.currentIndex + 1} of {stage.words.length}</p>
-      <div className="word" aria-live="polite" aria-atomic="true" aria-label={`Current word: ${word}`}>
-        {word}
+      <div className="word-character-preview" aria-hidden="true">
+        <Character stage={stage} equippedRewards={equippedRewards} />
+      </div>
+      <div
+        ref={wordRef}
+        className="word"
+        style={{ "--word-font-size": `${wordFontSize}px` } as CSSProperties}
+        aria-live="polite"
+        aria-atomic="true"
+        aria-label={`Current word: ${word}`}
+      >
+        <span className="word-text">{word}</span>
       </div>
       <p className={`word-state${known ? " is-known" : ""}${practice ? " is-practice" : ""}`}>
         {known ? "Known" : practice ? "Practice" : "New word"}
@@ -1468,22 +2123,49 @@ function WordCard({
   );
 }
 
+const MAX_WORD_FONT_SIZE = 168;
+const MIN_WORD_FONT_SIZE = 38;
+const WORD_FONT_FAMILY = 'Inter, ui-rounded, "Arial Rounded MT Bold", "Trebuchet MS", Arial, sans-serif';
+let wordMeasureCanvas: HTMLCanvasElement | null = null;
+
+function fittedWordFontSize(word: string, containerWidth: number): number {
+  if (!containerWidth || typeof document === "undefined") {
+    return MAX_WORD_FONT_SIZE;
+  }
+
+  if (!wordMeasureCanvas) {
+    wordMeasureCanvas = document.createElement("canvas");
+  }
+
+  const context = wordMeasureCanvas.getContext("2d");
+
+  if (!context) {
+    return MAX_WORD_FONT_SIZE;
+  }
+
+  context.font = `950 ${MAX_WORD_FONT_SIZE}px ${WORD_FONT_FAMILY}`;
+
+  const measuredWidth = Math.max(1, context.measureText(word).width);
+  const availableWidth = Math.max(120, containerWidth - 12);
+  const fittedSize = Math.floor(MAX_WORD_FONT_SIZE * Math.min(1, availableWidth / measuredWidth));
+
+  return Math.max(MIN_WORD_FONT_SIZE, Math.min(MAX_WORD_FONT_SIZE, fittedSize));
+}
+
 function ProgressPanel({
   content,
-  progress,
   stage,
   stageState,
   knownPercent,
   onStartFieldTrip,
-  onToggleGear,
+  onOpenInventory,
 }: {
   content: SightWordsContent;
-  progress: ProgressState;
   stage: StageContent;
   stageState: ReturnType<typeof activeStageState>;
   knownPercent: number;
   onStartFieldTrip: () => void;
-  onToggleGear: (itemId: string) => void;
+  onOpenInventory: () => void;
 }) {
   const unlocked = new Set(stageState.unlockedItems);
   const equipped = new Set(stageState.equippedItems);
@@ -1503,6 +2185,11 @@ function ProgressPanel({
         </div>
         <p>{equippedRewards.length === 0 ? "No gear yet" : `Wearing: ${equippedNames}`}</p>
         <p>{rewardStatus(stage, stageState)}</p>
+        <button className="button inventory-open-button" type="button" onClick={onOpenInventory}>
+          <Icon name="bag" />
+          <span>Open inventory</span>
+          <strong>{unlocked.size}/{stage.rewards.length}</strong>
+        </button>
       </section>
 
       <section className="panel-block">
@@ -1518,8 +2205,145 @@ function ProgressPanel({
         )}
       </section>
 
-      <section className="panel-block gear-block">
-        <h2>Treasure Gear</h2>
+      <section className="panel-block">
+        <h2>Practice List</h2>
+        <div className="practice-list" aria-live="polite">
+          {stageState.practiceWords.length === 0
+            ? <span className="empty-list">Practice list is clear</span>
+            : stageState.practiceWords.map((practiceWord) => (
+              <span className="practice-chip" key={practiceWord}>{practiceWord}</span>
+            ))}
+        </div>
+      </section>
+    </aside>
+  );
+}
+
+function WordCheckOverlay({
+  check,
+  feedback,
+  onPlay,
+  onChoose,
+}: {
+  check: WordCheckState | null;
+  feedback: WordCheckFeedback | null;
+  onPlay: () => void;
+  onChoose: (choice: string) => void;
+}) {
+  if (!check) {
+    return null;
+  }
+
+  const hasFeedback = Boolean(feedback);
+
+  return (
+    <section
+      className="word-check-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="wordCheckTitle"
+    >
+      <div className="word-check-modal">
+        <div className="word-check-header">
+          <p>Quick word check</p>
+          <h2 id="wordCheckTitle">Which word did you hear?</h2>
+        </div>
+        <button
+          className="button word-check-play"
+          type="button"
+          onClick={onPlay}
+          disabled={hasFeedback}
+        >
+          <Icon name="speaker" />
+          <span>Play sound again</span>
+        </button>
+        <div className="word-check-choices" aria-label="Word choices">
+          {check.choices.map((choice) => {
+            const isSelected = feedback?.choice === choice;
+            const isCorrectChoice = feedback && choice === check.word;
+            const isWrongSelection = feedback && isSelected && choice !== check.word;
+            const className = [
+              "word-check-choice",
+              hasFeedback ? "is-locked" : "",
+              isCorrectChoice ? "is-correct" : "",
+              isWrongSelection ? "is-wrong" : "",
+              hasFeedback && !isSelected && !isCorrectChoice ? "is-dimmed" : "",
+            ].filter(Boolean).join(" ");
+
+            return (
+              <button
+                key={choice}
+                className={className}
+                type="button"
+                onClick={() => onChoose(choice)}
+                disabled={hasFeedback}
+              >
+                <span className="word-check-choice-label">{choice}</span>
+                {(isCorrectChoice || isWrongSelection) && (
+                  <span className="word-check-mark" aria-hidden="true">
+                    {isCorrectChoice ? "O" : "X"}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+        {feedback && (
+          <p
+            className={`word-check-feedback ${feedback.correct ? "is-correct" : "is-wrong"}`}
+            role="status"
+            aria-live="polite"
+          >
+            <span aria-hidden="true">{feedback.correct ? "O" : "X"}</span>
+            {feedback.correct ? "Correct" : "Wrong"}
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function InventoryOverlay({
+  open,
+  stage,
+  stageState,
+  onClose,
+  onToggleGear,
+}: {
+  open: boolean;
+  stage: StageContent;
+  stageState: ReturnType<typeof activeStageState>;
+  onClose: () => void;
+  onToggleGear: (itemId: string) => void;
+}) {
+  const unlocked = new Set(stageState.unlockedItems);
+  const equipped = new Set(stageState.equippedItems);
+
+  return (
+    <section
+      className="inventory-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="inventoryTitle"
+      tabIndex={-1}
+      hidden={!open}
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <div className="inventory-modal">
+        <div className="inventory-header">
+          <div>
+            <p>Treasure Gear</p>
+            <h2 id="inventoryTitle">{stage.heroName} inventory</h2>
+            <span>{unlocked.size} of {stage.rewards.length} found</span>
+          </div>
+          <button className="icon-button inventory-close-button" type="button" aria-label="Close inventory" onClick={onClose}>
+            <Icon name="close" />
+          </button>
+        </div>
         <div className="inventory-grid" aria-live="polite">
           {stage.rewards.map((reward) => {
             const isUnlocked = unlocked.has(reward.id);
@@ -1550,19 +2374,8 @@ function ProgressPanel({
             );
           })}
         </div>
-      </section>
-
-      <section className="panel-block">
-        <h2>Practice List</h2>
-        <div className="practice-list" aria-live="polite">
-          {stageState.practiceWords.length === 0
-            ? <span className="empty-list">Practice list is clear</span>
-            : stageState.practiceWords.map((practiceWord) => (
-              <span className="practice-chip" key={practiceWord}>{practiceWord}</span>
-            ))}
-        </div>
-      </section>
-    </aside>
+      </div>
+    </section>
   );
 }
 
@@ -1658,16 +2471,15 @@ function FieldTripOverlay({
   open: boolean;
   stage: StageContent | null;
   fieldTrip: FieldTripState;
-  onMove: (direction: "up" | "down" | "jump") => void;
+  onMove: (direction: "left" | "right" | "hit") => void;
 }) {
-  const creature = fieldTrip.creature || { x: 92, lane: 1, name: "" };
+  const creature = fieldTrip.creature || { x: 92, name: "", visualKey: "stage1-monster-0", variant: 0 };
+  const fieldTripRewards = stage?.rewards || [];
   const runnerStyle = {
-    "--runner-top": `${LANE_TOPS[fieldTrip.lane]}%`,
-    "--runner-hop": fieldTrip.hopping ? "-18px" : "0",
+    "--runner-x": `${fieldTrip.runnerX}%`,
   } as CSSProperties;
   const creatureStyle = {
     "--creature-x": `${creature.x}%`,
-    "--creature-top": `${LANE_TOPS[creature.lane]}%`,
   } as CSSProperties;
   const tripStageStyle = {
     "--sky-offset": `${-fieldTrip.progress * 1.2}px`,
@@ -1686,39 +2498,110 @@ function FieldTripOverlay({
         <div className="trip-header">
           <p>Field Trip</p>
           <h2 id="tripTitle">{stage?.fieldTrip.title || "Run to the finish"}</h2>
-          <span>{stage?.fieldTrip.intro || "Collect friendly creatures."}</span>
+          <span>{stage?.fieldTrip.intro || "Move left or right and bonk cartoon monsters."}</span>
         </div>
         <div className="trip-stage" aria-label="Left to right field trip" style={tripStageStyle}>
           <div className="trip-sky" />
           <div className="trip-finish" aria-hidden="true" />
-          <div className="trip-runner" aria-hidden="true" style={runnerStyle} />
           <div
-            className="trip-creature"
+            className={`trip-runner${fieldTrip.swinging ? " is-swinging" : ""}`}
+            aria-hidden="true"
+            style={runnerStyle}
+          >
+            {stage && <Character stage={stage} equippedRewards={fieldTripRewards} />}
+          </div>
+          <div
+            className={`trip-monster monster-stage-${stage?.id || 1} monster-variant-${creature.variant}`}
             aria-hidden="true"
             data-creature={creature.name}
+            data-visual-key={creature.visualKey}
             style={creatureStyle}
-          />
-          <div className="trip-lanes" aria-hidden="true"><span /><span /><span /></div>
+          >
+            <MonsterArt stageId={stage?.id || 1} variant={creature.variant} />
+            <span className="trip-monster-label">{creature.name}</span>
+          </div>
+          <div className="trip-ground-lines" aria-hidden="true"><span /><span /><span /></div>
         </div>
         <div className="trip-progress" aria-hidden="true">
           <div id="tripProgressFill" style={{ width: `${fieldTrip.progress}%` }} />
         </div>
         <p className="trip-message" role="status" aria-live="polite">{fieldTrip.message}</p>
         <div className="trip-controls no-zoom-controls" aria-label="Field trip controls">
-          <PressButton className="trip-move" ariaLabel="Move up" onPress={() => onMove("up")}>
-            <Icon name="up" />
-            <span>Up</span>
+          <PressButton className="trip-move" ariaLabel="Move left" onPress={() => onMove("left")}>
+            <Icon name="left" />
+            <span>Left</span>
           </PressButton>
-          <PressButton className="trip-move" ariaLabel="Jump" onPress={() => onMove("jump")}>
-            <span>Jump</span>
+          <PressButton className="trip-move trip-hit" ariaLabel="Hit monster" onPress={() => onMove("hit")}>
+            <span>Hit</span>
           </PressButton>
-          <PressButton className="trip-move" ariaLabel="Move down" onPress={() => onMove("down")}>
-            <Icon name="down" />
-            <span>Down</span>
+          <PressButton className="trip-move" ariaLabel="Move right" onPress={() => onMove("right")}>
+            <Icon name="right" />
+            <span>Right</span>
           </PressButton>
         </div>
       </div>
     </section>
+  );
+}
+
+function MonsterArt({ stageId, variant }: { stageId: number; variant: number }) {
+  const accentClass = `monster-accent monster-accent-${variant}`;
+
+  if (stageId === 2) {
+    return (
+      <svg className="trip-monster-art roman-monster-art" viewBox="0 0 90 76" focusable="false" aria-hidden="true">
+        <path className="monster-shadow" d="M18 66c10-7 44-7 54 0 5 4 2 8-27 8s-32-4-27-8Z" />
+        <path className="monster-body" d="M20 18h50v30c0 15-12 23-25 27-13-4-25-12-25-27Z" />
+        <path className={accentClass} d="M21 18h48v12H21Z" />
+        <path className="monster-crest" d="M45 4c12 3 20 8 24 15H21C25 12 33 7 45 4Z" />
+        <path className="monster-detail" d="M45 20v43M28 39h34" />
+        <circle className="monster-eye" cx="36" cy="37" r="3" />
+        <circle className="monster-eye" cx="54" cy="37" r="3" />
+        <path className="monster-mouth" d="M38 49c5 3 9 3 14 0" />
+      </svg>
+    );
+  }
+
+  if (stageId === 3) {
+    return (
+      <svg className="trip-monster-art medieval-monster-art" viewBox="0 0 96 76" focusable="false" aria-hidden="true">
+        <path className="monster-shadow" d="M24 66c9-7 39-7 48 0 5 4 1 8-24 8s-29-4-24-8Z" />
+        <path className="monster-wing left-wing" d="M36 31 8 16l8 24-10 16 32-9Z" />
+        <path className="monster-wing right-wing" d="M60 31 88 16l-8 24 10 16-32-9Z" />
+        <path className="monster-body" d="M29 20c4-13 34-13 38 0l8 24c3 17-10 27-27 27S18 61 21 44Z" />
+        <path className={accentClass} d="m48 6 7 12H41Z" />
+        <circle className="monster-eye" cx="39" cy="38" r="3" />
+        <circle className="monster-eye" cx="57" cy="38" r="3" />
+        <path className="monster-mouth" d="M40 52c5 4 11 4 16 0" />
+      </svg>
+    );
+  }
+
+  if (stageId === 4) {
+    return (
+      <svg className="trip-monster-art modern-monster-art" viewBox="0 0 86 76" focusable="false" aria-hidden="true">
+        <path className="monster-shadow" d="M17 66c10-7 42-7 52 0 5 4 2 8-26 8s-31-4-26-8Z" />
+        <path className="monster-antenna" d="M43 14V4M34 11 28 3M52 11l6-8" />
+        <path className="monster-body" d="M18 18h50c5 0 8 3 8 8v31c0 5-3 8-8 8H18c-5 0-8-3-8-8V26c0-5 3-8 8-8Z" />
+        <path className={accentClass} d="M20 50h46v9H20Z" />
+        <rect className="monster-eye-panel" x="24" y="29" width="38" height="16" rx="7" />
+        <circle className="monster-eye" cx="34" cy="37" r="3" />
+        <circle className="monster-eye" cx="52" cy="37" r="3" />
+        <path className="monster-detail" d="M16 25h-9M79 25h-9M43 50v9" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg className="trip-monster-art ancient-monster-art" viewBox="0 0 90 76" focusable="false" aria-hidden="true">
+      <path className="monster-shadow" d="M18 66c10-7 44-7 54 0 5 4 2 8-27 8s-32-4-27-8Z" />
+      <path className="monster-body" d="M15 47 22 23l16-9 17 6 15-3 8 20-5 21-18 10-22-2Z" />
+      <path className={accentClass} d="m26 24 11-16 8 15M57 22l10-12 4 17" />
+      <path className="monster-detail" d="m31 34 9 7-8 9M55 33l-7 8 9 8" />
+      <circle className="monster-eye" cx="35" cy="39" r="3" />
+      <circle className="monster-eye" cx="56" cy="39" r="3" />
+      <path className="monster-mouth" d="M37 53c6 4 14 4 20 0" />
+    </svg>
   );
 }
 
@@ -1777,10 +2660,108 @@ function rewardStatus(stage: StageContent, stageState: ReturnType<typeof activeS
     : `${wordsNeeded} more known word${wordsNeeded === 1 ? "" : "s"} to find ${nextReward.name}.`;
 }
 
-function spawnCreature(creatures: FieldTripContent["creatures"]): TripCreature {
+function buildWordCheckCandidateIndices(
+  stage: StageContent,
+  stageState: ReturnType<typeof activeStageState>,
+  rememberedWordIndices: number[],
+  targetWordIndex: number,
+): number[] {
+  const knownWords = new Set(stageState.knownWords);
+  const checkedWordIndices = [
+    ...rememberedWordIndices.filter(
+      (wordIndex) =>
+        wordIndex >= 0 &&
+        wordIndex < stage.words.length &&
+        knownWords.has(stage.words[wordIndex]),
+    ),
+    targetWordIndex,
+  ];
+
+  return [...new Set(checkedWordIndices)].filter(
+    (wordIndex) => wordIndex >= 0 && wordIndex < stage.words.length,
+  );
+}
+
+function createWordCheckState({
+  stage,
+  targetWordIndex,
+  candidateWordIndices,
+  previousState,
+  failedWordIndices,
+  followUpsRemaining,
+}: {
+  stage: StageContent;
+  targetWordIndex: number;
+  candidateWordIndices: number[];
+  previousState: ProgressState;
+  failedWordIndices: number[];
+  followUpsRemaining: number;
+}): WordCheckState | null {
+  const availableWordIndices = [...new Set(candidateWordIndices)].filter(
+    (wordIndex) => wordIndex >= 0 && wordIndex < stage.words.length,
+  );
+  const promptWordIndex = randomWordIndex(availableWordIndices);
+
+  if (promptWordIndex === null) {
+    return null;
+  }
+
+  const word = stage.words[promptWordIndex];
+
   return {
-    x: 92 + Math.random() * 10,
-    lane: Math.floor(Math.random() * 3),
-    name: creatures[Math.floor(Math.random() * creatures.length)] || "friend",
+    stageId: stage.id,
+    targetWordIndex,
+    promptWordIndex,
+    word,
+    choices: buildWordCheckChoices(stage, word),
+    previousState,
+    remainingWordIndices: availableWordIndices.filter(
+      (wordIndex) => wordIndex !== promptWordIndex,
+    ),
+    failedWordIndices,
+    followUpsRemaining,
+  };
+}
+
+function buildWordCheckChoices(stage: StageContent, word: string): string[] {
+  const firstLetter = firstWordLetter(word);
+  const availableWords = stage.words.filter((stageWord) => stageWord !== word);
+  const sameLetterDistractors = shuffleWords(
+    availableWords.filter((stageWord) => firstWordLetter(stageWord) === firstLetter),
+  );
+  const fallbackDistractors = shuffleWords(
+    availableWords.filter((stageWord) => firstWordLetter(stageWord) !== firstLetter),
+  );
+  const distractors = [
+    ...sameLetterDistractors,
+    ...fallbackDistractors,
+  ].slice(0, 3);
+
+  return shuffleWords([word, ...distractors]);
+}
+
+function firstWordLetter(word: string): string {
+  return word.trim().toLocaleLowerCase("en-US").match(/[a-z]/)?.[0] || "";
+}
+
+function shuffleWords(words: string[]): string[] {
+  return [...words].sort(() => Math.random() - 0.5);
+}
+
+function randomWordIndex(wordIndices: number[]): number | null {
+  return wordIndices.length
+    ? wordIndices[Math.floor(Math.random() * wordIndices.length)]
+    : null;
+}
+
+function spawnCreature(creatures: FieldTripContent["creatures"], stageId: number): TripCreature {
+  const names = creatures.length ? creatures : ["monster"];
+  const index = Math.floor(Math.random() * names.length);
+
+  return {
+    x: 84 + Math.random() * 8,
+    name: names[index] || "monster",
+    visualKey: `stage${stageId}-monster-${index}`,
+    variant: index % 5,
   };
 }

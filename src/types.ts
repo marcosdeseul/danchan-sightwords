@@ -2,6 +2,7 @@ export type RewardSlot =
   | "weapon"
   | "boots"
   | "shield"
+  | "radio"
   | "cape"
   | "armor"
   | "belt"
@@ -54,6 +55,7 @@ export interface StageContent {
 
 export interface SightWordsContent {
   version: number;
+  rewardAliases?: Record<string, string>;
   stages: StageContent[];
 }
 
@@ -85,7 +87,8 @@ export interface ProgressState {
 
 export interface User {
   id: number;
-  email: string;
+  username: string;
+  email: string | null;
 }
 
 export interface ApiErrorResponse {

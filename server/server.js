@@ -8,9 +8,11 @@ const PgSession = require("connect-pg-simple")(session);
 const { pool, query } = require("./db");
 const {
   hashPassword,
-  isValidEmail,
   normalizeEmail,
+  normalizeUsername,
+  validateOptionalEmail,
   validatePassword,
+  validateUsername,
   verifyPassword,
 } = require("./auth");
 const { PUBLIC_CONTENT, CONTENT_VERSION } = require("./content");
@@ -74,11 +76,19 @@ function createApp() {
   }));
 
   app.post("/api/auth/signup", asyncHandler(async (req, res) => {
+    const username = normalizeUsername(req.body?.username);
     const email = normalizeEmail(req.body?.email);
     const password = req.body?.password;
+    const usernameError = validateUsername(username);
 
-    if (!isValidEmail(email)) {
-      return res.status(400).json({ error: "Enter a valid email address." });
+    if (usernameError) {
+      return res.status(400).json({ error: usernameError });
+    }
+
+    const emailError = validateOptionalEmail(email);
+
+    if (emailError) {
+      return res.status(400).json({ error: emailError });
     }
 
     const passwordError = validatePassword(password);
@@ -91,8 +101,8 @@ function createApp() {
 
     try {
       const result = await query(
-        "INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email",
-        [email, passwordHash],
+        "INSERT INTO users (username, email, password_hash) VALUES ($1, $2, $3) RETURNING id, username, email",
+        [username, email, passwordHash],
       );
       const user = result.rows[0];
 
@@ -102,7 +112,9 @@ function createApp() {
       res.status(201).json({ user, progress: await loadProgress(user.id) });
     } catch (error) {
       if (error.code === "23505") {
-        return res.status(409).json({ error: "That email already has an account." });
+        return res.status(409).json({
+          error: duplicateAccountMessage(error),
+        });
       }
 
       throw error;
@@ -110,28 +122,29 @@ function createApp() {
   }));
 
   app.post("/api/auth/login", asyncHandler(async (req, res) => {
-    const email = normalizeEmail(req.body?.email);
+    const username = normalizeUsername(req.body?.username);
     const password = req.body?.password;
+    const usernameError = validateUsername(username);
 
-    if (!isValidEmail(email) || typeof password !== "string") {
-      return res.status(401).json({ error: "Email or password is incorrect." });
+    if (usernameError || typeof password !== "string") {
+      return res.status(401).json({ error: "Username or password is incorrect." });
     }
 
     const result = await query(
-      "SELECT id, email, password_hash FROM users WHERE email = $1",
-      [email],
+      "SELECT id, username, email, password_hash FROM users WHERE username = $1",
+      [username],
     );
     const userRow = result.rows[0];
 
     if (!userRow || !(await verifyPassword(password, userRow.password_hash))) {
-      return res.status(401).json({ error: "Email or password is incorrect." });
+      return res.status(401).json({ error: "Username or password is incorrect." });
     }
 
     req.session.userId = userRow.id;
     await saveSession(req);
 
     res.json({
-      user: { id: userRow.id, email: userRow.email },
+      user: toPublicUser(userRow),
       progress: await loadProgress(userRow.id),
     });
   }));
@@ -139,6 +152,32 @@ function createApp() {
   app.post("/api/auth/logout", asyncHandler(async (req, res) => {
     await destroySession(req);
     res.json({ ok: true });
+  }));
+
+  app.put("/api/me", requireAuth, asyncHandler(async (req, res) => {
+    const email = normalizeEmail(req.body?.email);
+    const emailError = validateOptionalEmail(email);
+
+    if (emailError) {
+      return res.status(400).json({ error: emailError });
+    }
+
+    try {
+      const result = await query(
+        "UPDATE users SET email = $1, updated_at = now() WHERE id = $2 RETURNING id, username, email",
+        [email, req.session.userId],
+      );
+
+      res.json({ user: toPublicUser(result.rows[0]) });
+    } catch (error) {
+      if (error.code === "23505") {
+        return res.status(409).json({
+          error: duplicateAccountMessage(error),
+        });
+      }
+
+      throw error;
+    }
   }));
 
   app.get("/api/progress", requireAuth, asyncHandler(async (req, res) => {
@@ -194,11 +233,29 @@ async function currentUser(req) {
     return null;
   }
 
-  const result = await query("SELECT id, email FROM users WHERE id = $1", [
+  const result = await query("SELECT id, username, email FROM users WHERE id = $1", [
     req.session.userId,
   ]);
 
-  return result.rows[0] || null;
+  return result.rows[0] ? toPublicUser(result.rows[0]) : null;
+}
+
+function toPublicUser(userRow) {
+  return {
+    id: userRow.id,
+    username: userRow.username,
+    email: userRow.email || null,
+  };
+}
+
+function duplicateAccountMessage(error) {
+  const constraint = String(error.constraint || "");
+
+  if (constraint.includes("email")) {
+    return "That email is already used by another account.";
+  }
+
+  return "That username already has an account.";
 }
 
 async function loadProgress(userId) {

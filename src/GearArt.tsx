@@ -73,15 +73,50 @@ function CharacterGearShape({ slot, variant }: { slot: RewardSlot; variant: Stag
   switch (slot) {
     case "weapon":
       if (variant === "ancient") {
-        return <><path className="weapon-handle" d="M157 132l32-46" /><path className="weapon-head" d="M181 68h31v25h-31Z" /><path d="M178 76h37" /></>;
+        return (
+          <>
+            <path className="weapon-handle" d="M156 136 190 84" />
+            <path className="weapon-head weapon-stone" d="M178 72c8-8 28-8 38 1l-5 22c-10 7-27 7-38-1Z" />
+            <path className="weapon-highlight" d="M187 77c6-3 15-2 21 1" />
+            <path className="weapon-binding" d="m181 89 18 11M187 80l21 12" />
+            <path className="weapon-grip" d="m155 136 13 8" />
+          </>
+        );
       }
       if (variant === "roman") {
-        return <><path className="weapon-handle" d="M159 134l28-55" /><path className="weapon-head" d="M188 48l14 31-19 5Z" /><path className="weapon-guard" d="M156 111l31 16" /></>;
+        return (
+          <>
+            <path className="weapon-handle" d="M157 135 184 91" />
+            <path className="weapon-guard" d="m164 105 28 17" />
+            <path className="weapon-blade" d="M194 43c8 13 13 28 13 43l-17 8-11-15c2-14 7-26 15-36Z" />
+            <path className="weapon-highlight" d="M195 56c3 8 5 17 5 25" />
+            <circle className="weapon-pommel" cx="157" cy="135" r="5" />
+            <path className="weapon-grip" d="m170 113 12 7" />
+          </>
+        );
       }
       if (variant === "medieval") {
-        return <><path className="weapon-handle" d="M157 138l35-69" /><path className="weapon-head" d="M191 45l15 22-18 5Z" /><path className="weapon-guard" d="M151 113l35 18" /></>;
+        return (
+          <>
+            <path className="weapon-handle" d="M156 139 179 102" />
+            <path className="weapon-guard" d="m161 104 33 20" />
+            <path className="weapon-blade" d="M194 44 211 59l-25 48-16-10Z" />
+            <path className="weapon-highlight" d="m195 58-17 37" />
+            <circle className="weapon-pommel" cx="155" cy="140" r="5" />
+            <path className="weapon-gem" d="m177 101 7 4-4 7-7-4Z" />
+          </>
+        );
       }
-      return <><path className="weapon-handle" d="M158 132l39-39" /><path className="weapon-head" d="M190 84h22v14h-22Z" /><circle cx="204" cy="91" r="7" /></>;
+      return (
+        <>
+          <path className="weapon-body" d="M158 113h46l11 10-11 11h-27l-8 22h-16l7-22h-9v-21Z" />
+          <path className="weapon-barrel" d="M204 117h24v13h-24Z" />
+          <path className="weapon-accent" d="M175 119h19l4 4-4 4h-19Z" />
+          <path className="weapon-trigger" d="M169 134c5 7 1 16-7 17" />
+          <path className="weapon-highlight" d="M164 119h36M208 122h15" />
+          <circle className="weapon-gem" cx="184" cy="126" r="4" />
+        </>
+      );
     case "boots":
       if (variant === "ancient") {
         return <><path d="M74 205h31l-6 19H66c0-10 4-16 8-19Z" /><path d="M116 205h30c5 4 8 9 8 19h-38Z" /><path d="M80 210l8 7M126 210l8 7" /></>;
@@ -101,6 +136,16 @@ function CharacterGearShape({ slot, variant }: { slot: RewardSlot; variant: Stag
         return <><path d="M48 112l31 12v29c0 23-17 36-31 43-14-7-31-20-31-43v-29Z" /><path d="M48 124v61" /><path d="M27 151h42" /></>;
       }
       return <><path d="M48 119l28 10v24c0 20-15 33-28 39-13-6-28-19-28-39v-24Z" /><path d="M48 129v50" /></>;
+    case "radio":
+      return (
+        <>
+          <path className="radio-body" d="M27 116h40c5 0 8 3 8 8v53c0 5-3 8-8 8H27c-5 0-8-3-8-8v-53c0-5 3-8 8-8Z" />
+          <path className="radio-antenna" d="M61 117 76 92" />
+          <path className="radio-screen" d="M31 128h26v17H31Z" />
+          <path className="radio-speaker" d="M33 158h29M33 168h24" />
+          <circle className="radio-button" cx="63" cy="139" r="5" />
+        </>
+      );
     case "cape":
       if (variant === "ancient") {
         return <><path d="M82 86h56l22 106-20-13-16 21-17-20-19 20-14-22-20 14Z" /><path d="M88 96c13 8 31 8 44 0" /></>;
@@ -245,15 +290,44 @@ function GearIconShape({ slot, variant }: { slot: RewardSlot; variant: StageVari
   switch (slot) {
     case "weapon":
       if (variant === "ancient") {
-        return <><path {...none} d="M18 51 44 18" /><path {...accent} d="M38 9h18v20H38Z" /><path {...none} d="M16 39 28 48" /></>;
+        return (
+          <>
+            <path {...none} d="M18 53 43 22" />
+            <path {...common} d="M34 13c6-7 21-7 27 0l-4 18c-7 5-20 5-27 0Z" />
+            <path {...none} d="M38 17c5-2 12-2 17 0M35 27l14 8M42 21l15 8M16 45l9 8" />
+          </>
+        );
       }
       if (variant === "roman") {
-        return <><path {...none} d="M19 52 43 16" /><path {...accent} d="M43 8 54 26 39 31Z" /><path {...none} d="M16 39 33 47" /></>;
+        return (
+          <>
+            <path {...none} d="M18 53 39 28" />
+            <path {...none} d="M27 30 44 45" />
+            <path fill="#f8fafc" stroke="var(--gear-stroke)" strokeWidth="4" strokeLinejoin="round" d="M43 7c7 10 11 22 10 34l-13 7-8-12c1-11 5-21 11-29Z" />
+            <path {...none} strokeWidth={3} d="M43 17c3 7 4 14 4 21M31 39l8 7" />
+            <circle fill="var(--gear-accent)" stroke="var(--gear-stroke)" strokeWidth="3" cx="18" cy="53" r="4" />
+          </>
+        );
       }
       if (variant === "medieval") {
-        return <><path {...none} d="M18 53 47 13" /><path {...accent} d="M47 7 56 20 43 23Z" /><path {...none} d="M16 38 35 50" /></>;
+        return (
+          <>
+            <path {...none} d="M17 54 36 32" />
+            <path {...none} d="M25 32 44 49" />
+            <path fill="#f8fafc" stroke="var(--gear-stroke)" strokeWidth="4" strokeLinejoin="round" d="M45 7 57 18 38 43 27 33Z" />
+            <path {...none} strokeWidth={3} d="M46 16 35 36" />
+            <circle fill="var(--gear-accent)" stroke="var(--gear-stroke)" strokeWidth="3" cx="17" cy="54" r="4" />
+          </>
+        );
       }
-      return <><path {...none} d="M16 48 48 16" /><path {...accent} d="M42 12h14v13H42Z" /><circle fill="var(--gear-accent)" stroke="var(--gear-stroke)" strokeWidth="3" cx="48" cy="19" r="8" /></>;
+      return (
+        <>
+          <path {...common} d="M10 25h34l8 7-8 8H27l-5 16H11l5-16h-6Z" />
+          <path {...accent} d="M44 28h16v9H44Z" />
+          <path {...none} strokeWidth={3} d="M17 31h23M47 32h9M25 40c5 6 2 12-5 14" />
+          <circle fill="var(--gear-accent)" stroke="var(--gear-stroke)" strokeWidth="3" cx="32" cy="32" r="4" />
+        </>
+      );
     case "boots":
       if (variant === "ancient") {
         return <><path {...common} d="M14 20h15l-4 28H9c0-8 2-14 5-18Z" /><path {...common} d="M36 20h14l5 10v18H36Z" /><path {...none} d="M17 26l8 7M40 26l8 7" /></>;
@@ -273,6 +347,16 @@ function GearIconShape({ slot, variant }: { slot: RewardSlot; variant: StageVari
         return <><path {...common} d="M32 7 52 15v16c0 14-10 23-20 28-10-5-20-14-20-28V15Z" /><path {...none} d="M32 15v34M19 32h26" /></>;
       }
       return <><path {...common} d="M32 7 51 14v17c0 14-9 23-19 28-10-5-19-14-19-28V14Z" /><path {...none} d="M32 15v34" /></>;
+    case "radio":
+      return (
+        <>
+          <path {...common} className="radio-body" d="M18 16h28c4 0 7 3 7 7v30c0 4-3 7-7 7H18c-4 0-7-3-7-7V23c0-4 3-7 7-7Z" />
+          <path {...none} className="radio-antenna" d="M43 16 56 4" />
+          <path {...accent} className="radio-screen" d="M20 25h17v11H20Z" />
+          <path {...none} className="radio-speaker" d="M21 45h21M21 52h16" />
+          <circle fill="var(--gear-accent)" stroke="var(--gear-stroke)" strokeWidth="3" className="radio-button" cx="45" cy="33" r="4" />
+        </>
+      );
     case "cape":
       if (variant === "ancient") {
         return <><path {...common} d="M21 12h22l9 41-10-7-8 10-8-10-9 10-5-11-9 8Z" /><path {...none} d="M22 14c5 5 15 5 20 0" /></>;

@@ -2,6 +2,7 @@
 
 const {
   CONTENT_VERSION,
+  REWARD_ID_ALIASES,
   STAGES,
   allStageIds,
   rewardsForStage,
@@ -40,7 +41,6 @@ function createDefaultProgress() {
 }
 
 function sanitizeProgress(value) {
-  const fallback = createDefaultProgress();
   const source = value && typeof value === "object" ? value : {};
   const requestedCompletedFieldTrips = new Set(
     cleanStageIdArray(source.completedFieldTrips).filter((stageId) =>
@@ -84,7 +84,7 @@ function sanitizeProgress(value) {
   const requestedActiveStage = Number(source.activeStageId);
   const activeStageId = unlockedStageIds.includes(requestedActiveStage)
     ? requestedActiveStage
-    : unlockedStageIds[unlockedStageIds.length - 1] || fallback.activeStageId;
+    : unlockedStageIds[unlockedStageIds.length - 1];
 
   return {
     version: CONTENT_VERSION,
@@ -186,7 +186,6 @@ function completedFieldTripsFor(stages) {
 
 function unlockedStageIdsFor(stages) {
   const unlockedStageIds = [1];
-  const validStageIds = new Set(allStageIds());
 
   for (const stage of STAGES) {
     if (!hasNextStage(stage)) {
@@ -199,9 +198,7 @@ function unlockedStageIdsFor(stages) {
       break;
     }
 
-    if (validStageIds.has(stage.id + 1)) {
-      unlockedStageIds.push(stage.id + 1);
-    }
+    unlockedStageIds.push(stage.id + 1);
   }
 
   return unlockedStageIds;
@@ -268,9 +265,7 @@ function mergeProgress(existing, incoming) {
     (first, second) => first - second,
   );
   merged.unlockedStageIds = unlockedStageIdsFor(merged.stages);
-  merged.activeStageId = merged.unlockedStageIds.includes(next.activeStageId)
-    ? next.activeStageId
-    : merged.unlockedStageIds[merged.unlockedStageIds.length - 1];
+  merged.activeStageId = next.activeStageId;
 
   return sanitizeProgress(merged);
 }
@@ -315,7 +310,7 @@ function cleanDeckOrder(value, length) {
     }
   });
 
-  return clean.length === length ? clean : defaultOrder;
+  return clean;
 }
 
 function cleanStageIdArray(value) {
@@ -335,7 +330,10 @@ function cleanItemArray(value, rewardById) {
   }
 
   return unique(
-    value.filter((itemId) => typeof itemId === "string" && rewardById.has(itemId)),
+    value
+      .filter((itemId) => typeof itemId === "string")
+      .map(resolveRewardId)
+      .filter((itemId) => rewardById.has(itemId)),
   );
 }
 
@@ -361,7 +359,8 @@ function cleanPendingReward(
   }
 
   const reward =
-    rewardById.get(value.itemId) || rewardByMilestone.get(value.milestone);
+    rewardById.get(resolveRewardId(value.itemId)) ||
+    rewardByMilestone.get(value.milestone);
 
   if (!reward || knownCount < reward.milestone || completedSet.has(reward.milestone)) {
     return null;
@@ -376,6 +375,10 @@ function cleanPendingReward(
 function sortRewards(itemIds, rewards) {
   const set = new Set(itemIds);
   return rewards.filter((reward) => set.has(reward.id)).map((reward) => reward.id);
+}
+
+function resolveRewardId(itemId) {
+  return typeof itemId === "string" ? REWARD_ID_ALIASES[itemId] || itemId : "";
 }
 
 function unionWords(first, second, words) {
