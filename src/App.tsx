@@ -87,7 +87,7 @@ interface TripCreature {
   name: string;
   visualKey: string;
   variant: number;
-  kind: "wolf" | "dragon";
+  kind: "wolf" | "dragon" | "flying-dragon";
 }
 
 interface FieldTripState {
@@ -1629,7 +1629,13 @@ export default function App() {
     const stage = current.content && current.progress
       ? activeStage(current.content, current.progress)
       : null;
-    const stageClasses = ["stage-ancient", "stage-roman", "stage-medieval", "stage-modern"];
+    const stageClasses = [
+      "stage-ancient",
+      "stage-roman",
+      "stage-medieval",
+      "stage-modern",
+      "stage-pilot",
+    ];
 
     document.body.classList.remove(...stageClasses);
     document.body.classList.add(stage?.themeClass || "stage-ancient");
@@ -2324,6 +2330,7 @@ function WordCheckOverlay({
   }
 
   const hasFeedback = Boolean(feedback);
+  const showChoiceSounds = feedback?.correct === false;
 
   return (
     <section
@@ -2360,7 +2367,10 @@ function WordCheckOverlay({
             ].filter(Boolean).join(" ");
 
             return (
-              <div className="word-check-option" key={choice}>
+              <div
+                className={`word-check-option${showChoiceSounds ? " has-playback" : ""}`}
+                key={choice}
+              >
                 <button
                   className={className}
                   type="button"
@@ -2374,15 +2384,17 @@ function WordCheckOverlay({
                     </span>
                   )}
                 </button>
-                <button
-                  className="word-check-choice-play"
-                  type="button"
-                  aria-label={`Play ${choice}`}
-                  title={`Play ${choice}`}
-                  onClick={() => onPlayChoice(choice)}
-                >
-                  <Icon name="speaker" />
-                </button>
+                {showChoiceSounds && (
+                  <button
+                    className="word-check-choice-play"
+                    type="button"
+                    aria-label={`Play ${choice}`}
+                    title={`Play ${choice}`}
+                    onClick={() => onPlayChoice(choice)}
+                  >
+                    <Icon name="speaker" />
+                  </button>
+                )}
               </div>
             );
           })}
@@ -2670,7 +2682,7 @@ function FieldTripOverlay({
   );
 }
 
-function MonsterArt({
+export function MonsterArt({
   kind,
   stageId,
   variant,
@@ -2680,6 +2692,31 @@ function MonsterArt({
   variant: number;
 }) {
   const accentClass = `monster-accent monster-accent-${variant}`;
+
+  if (kind === "flying-dragon") {
+    return (
+      <svg
+        className={`trip-monster-art flying-dragon-creature-art stage-creature-${stageId}`}
+        viewBox="0 0 148 104"
+        focusable="false"
+        aria-hidden="true"
+      >
+        <path className="monster-shadow" d="M25 92c22-8 75-8 96 0 8 4 2 8-48 8s-56-4-48-8Z" />
+        <path className="monster-wing monster-wing-left" d="M67 51C47 13 20 7 5 14l27 17-18 9 43 26Z" />
+        <path className="monster-wing monster-wing-right" d="M77 49c18-35 46-39 63-30l-28 14 18 11-43 22Z" />
+        <path className="monster-tail" d="M52 62C30 61 15 72 7 67c8 18 32 24 55 8Z" />
+        <path className="monster-body" d="M47 44c10-17 42-17 55 0 9 13 4 34-11 43H56c-17-9-20-29-9-43Z" />
+        <path className={accentClass} d="M57 51c9-7 27-7 36 0-2 13-8 23-18 30-10-7-16-17-18-30Z" />
+        <path className="monster-body monster-head" d="M91 35c7-14 28-16 41-5 8 8 3 22-9 27H99c-10-4-13-13-8-22Z" />
+        <path className="monster-crest" d="m98 31-2-16 12 11 9-16 4 19Z" />
+        <path className="monster-snout" d="M118 40h25l-6 13h-22Z" />
+        <path className="monster-leg" d="M59 78l-7 12 13-5M86 78l8 11 5-7" />
+        <circle className="monster-eye" cx="118" cy="34" r="3.5" />
+        <circle className="monster-nose" cx="140" cy="46" r="3" />
+        <path className="monster-mouth" d="M122 50c5 2 10 1 14-2" />
+      </svg>
+    );
+  }
 
   if (kind === "dragon") {
     return (
@@ -2878,12 +2915,24 @@ function randomWordIndex(wordIndices: number[]): number | null {
 function spawnCreature(creatures: FieldTripContent["creatures"], stageId: number): TripCreature {
   const names = creatures.length ? creatures : ["monster"];
   const index = Math.floor(Math.random() * names.length);
+  const name = names[index] || "monster";
+  const kind = creatureKind(name);
 
   return {
     x: 84 + Math.random() * 8,
-    name: names[index] || "monster",
-    visualKey: `stage${stageId}-${names[index]?.toLowerCase().includes("dragon") ? "dragon" : "wolf"}-${index}`,
+    name,
+    visualKey: `stage${stageId}-${kind}-${index}`,
     variant: index % 5,
-    kind: names[index]?.toLowerCase().includes("dragon") ? "dragon" : "wolf",
+    kind,
   };
+}
+
+function creatureKind(name: string): TripCreature["kind"] {
+  const normalizedName = name.toLowerCase();
+
+  if (normalizedName.includes("flying dragon")) {
+    return "flying-dragon";
+  }
+
+  return normalizedName.includes("dragon") ? "dragon" : "wolf";
 }

@@ -13,13 +13,20 @@ const {
 } = require("../server/progress");
 
 test("staged content has the expected word counts", () => {
+  assert.equal(PUBLIC_CONTENT.version, 6);
   assert.equal(PUBLIC_CONTENT.stages[0].words.length, 100);
   assert.equal(PUBLIC_CONTENT.stages[1].words.length, 150);
   assert.equal(PUBLIC_CONTENT.stages[2].words.length, 200);
   assert.equal(PUBLIC_CONTENT.stages[3].words.length, 250);
+  assert.equal(PUBLIC_CONTENT.stages[4].words.length, 300);
   assert.equal(PUBLIC_CONTENT.stages[1].subtitle, "Roman Warrior");
   assert.equal(PUBLIC_CONTENT.stages[2].subtitle, "Medieval Knight");
   assert.equal(PUBLIC_CONTENT.stages[3].subtitle, "Modern Soldier");
+  assert.equal(PUBLIC_CONTENT.stages[4].subtitle, "Jet Pilot");
+  assert.equal(
+    PUBLIC_CONTENT.stages[4].fieldTrip.creatures.every((name) => /Flying Dragon$/.test(name)),
+    true,
+  );
 });
 
 test("each stage has no duplicate words", () => {
@@ -50,11 +57,11 @@ test("words do not repeat across stages", () => {
   });
 
   assert.deepEqual(duplicates, []);
-  assert.equal(seen.size, 700);
+  assert.equal(seen.size, 1000);
 });
 
 test("each stage has its own reward catalog and visual keys", () => {
-  const expectedRewardCounts = [10, 15, 20, 25];
+  const expectedRewardCounts = [10, 15, 20, 25, 30];
   const rewardNames = [];
   const visualKeys = [];
 
@@ -79,6 +86,10 @@ test("each stage has its own reward catalog and visual keys", () => {
   assert.equal(PUBLIC_CONTENT.stages[3].rewards[2].name, "Field Radio");
   assert.equal(PUBLIC_CONTENT.stages[3].rewards[2].slot, "radio");
   assert.equal(PUBLIC_CONTENT.stages[3].rewards[9].name, "Patrol Cap");
+  assert.equal(PUBLIC_CONTENT.stages[4].rewards[0].name, "Control Stick");
+  assert.equal(PUBLIC_CONTENT.stages[4].rewards[25].name, "Turbofan Engine");
+  assert.equal(PUBLIC_CONTENT.stages[4].rewards[29].name, "Mini Jet Model");
+  assert.equal(PUBLIC_CONTENT.stages[4].rewards[29].id, "stage5-jetmodel");
   assert.equal(REWARD_ID_ALIASES["stage4-shield"], "stage4-radio");
   assert.equal(
     PUBLIC_CONTENT.stages[3].rewards.some((reward) => /shield/i.test(reward.name)),
@@ -99,6 +110,26 @@ test("default progress starts at stage 1 only", () => {
   assert.equal(progress.stages["2"].deckOrder.length, 150);
   assert.equal(progress.stages["3"].deckOrder.length, 200);
   assert.equal(progress.stages["4"].deckOrder.length, 250);
+  assert.equal(progress.stages["5"].deckOrder.length, 300);
+});
+
+test("version 5 progress gains a fresh stage 5 without losing earlier progress", () => {
+  const stageFourWords = PUBLIC_CONTENT.stages[3].words.slice(0, 12);
+  const clean = sanitizeProgress({
+    version: 5,
+    activeStageId: 4,
+    stages: {
+      4: {
+        knownWords: stageFourWords,
+        practiceWords: [PUBLIC_CONTENT.stages[3].words[12]],
+      },
+    },
+  });
+
+  assert.deepEqual(clean.stages["4"].knownWords, stageFourWords);
+  assert.deepEqual(clean.stages["4"].practiceWords, [PUBLIC_CONTENT.stages[3].words[12]]);
+  assert.deepEqual(clean.stages["5"].knownWords, []);
+  assert.equal(clean.stages["5"].deckOrder.length, 300);
 });
 
 test("sanitizer falls back cleanly for invalid saved shapes", () => {
@@ -199,14 +230,14 @@ test("all completed stages stop field-trip unlock scanning at the final stage", 
     progress.stages[String(stage.id)].knownWords = [...stage.words];
     progress.stages[String(stage.id)].fieldTripCompleted = true;
   });
-  progress.completedFieldTrips = [1, 2, 3, 4];
-  progress.activeStageId = 4;
+  progress.completedFieldTrips = [1, 2, 3, 4, 5];
+  progress.activeStageId = 5;
 
   const clean = sanitizeProgress(progress);
 
-  assert.deepEqual(clean.completedFieldTrips, [1, 2, 3]);
-  assert.deepEqual(clean.unlockedStageIds, [1, 2, 3, 4]);
-  assert.equal(clean.activeStageId, 4);
+  assert.deepEqual(clean.completedFieldTrips, [1, 2, 3, 4]);
+  assert.deepEqual(clean.unlockedStageIds, [1, 2, 3, 4, 5]);
+  assert.equal(clean.activeStageId, 5);
 });
 
 test("completed field trip unlocks the next stage", () => {
@@ -386,12 +417,15 @@ test("field trip uses movement, attacks, shield defense, and creature-shaped mon
   assert.match(appSource, /function MonsterArt/);
   assert.match(appSource, /wolf-creature-art/);
   assert.match(appSource, /dragon-creature-art/);
-  assert.match(appSource, /kind:\s*"wolf"\s*\|\s*"dragon"/);
+  assert.match(appSource, /kind:\s*"wolf"\s*\|\s*"dragon"\s*\|\s*"flying-dragon"/);
   assert.match(appSource, /monster-stage-\$\{stage\?\.id \|\| 1\}/);
   assert.match(contentSource, /"Cave Wolf"/);
   assert.match(contentSource, /"Ember Dragon"/);
   assert.match(contentSource, /"Cyber Wolf"/);
   assert.match(contentSource, /"Sky Dragon"/);
+  assert.match(contentSource, /"Cloudwing Flying Dragon"/);
+  assert.match(appSource, /flying-dragon-creature-art/);
+  assert.match(appSource, /normalizedName\.includes\("flying dragon"\)/);
   assert.doesNotMatch(appSource, /ariaLabel="Jump"/);
   assert.doesNotMatch(appSource, /className="trip-creature"/);
   assert.match(css, /\.trip-monster/);
@@ -399,6 +433,8 @@ test("field trip uses movement, attacks, shield defense, and creature-shaped mon
   assert.match(css, /\.trip-monster\.monster-stage-2/);
   assert.match(css, /\.trip-monster\.monster-stage-3/);
   assert.match(css, /\.trip-monster\.monster-stage-4/);
+  assert.match(css, /\.trip-monster\.monster-stage-5/);
+  assert.match(css, /\.trip-monster\.monster-kind-flying-dragon/);
   assert.match(css, /\.trip-runner \.character-svg/);
   assert.match(css, /\.trip-runner\.is-swinging \.weapon-layer/);
   assert.match(css, /\.trip-runner\.is-defending \.shield-layer/);
@@ -480,6 +516,8 @@ test("known-word clicks can require an audio word check before awarding progress
   assert.match(appSource, /className="word-check-overlay"/);
   assert.match(appSource, /Play sound again/);
   assert.match(appSource, /onPlayChoice=\{playWordCheckChoice\}/);
+  assert.match(appSource, /const showChoiceSounds = feedback\?\.correct === false/);
+  assert.match(appSource, /\{showChoiceSounds && \(/);
   assert.match(appSource, /aria-label=\{`Play \$\{choice\}`\}/);
   assert.match(appSource, /className="word-check-choice-play"/);
   assert.match(appSource, /The correct word is/);
@@ -510,6 +548,7 @@ test("known-word clicks can require an audio word check before awarding progress
   assert.match(css, /\.word-check-choice\.is-correct/);
   assert.match(css, /\.word-check-choice\.is-wrong/);
   assert.match(css, /\.word-check-option\s*\{/);
+  assert.match(css, /\.word-check-option\.has-playback\s*\{/);
   assert.match(css, /\.word-check-choice-play\s*\{/);
   assert.match(css, /\.word-check-feedback\.is-correct/);
   assert.match(css, /\.word-check-feedback\.is-wrong/);
@@ -569,6 +608,35 @@ test("modern soldier third reward renders as radio art instead of shield art", (
   assert.match(gearSource, /radio-antenna/);
   assert.match(css, /\.radio-layer \.radio-body/);
   assert.match(css, /\.radio-layer \.radio-antenna/);
+});
+
+test("stage 5 uses dedicated pilot and fighter-jet part art", () => {
+  const gearSource = fs.readFileSync(
+    path.join(__dirname, "..", "src", "GearArt.tsx"),
+    "utf8",
+  );
+  const typeSource = fs.readFileSync(
+    path.join(__dirname, "..", "src", "types.ts"),
+    "utf8",
+  );
+  const css = fs.readFileSync(
+    path.join(__dirname, "..", "public", "styles.css"),
+    "utf8",
+  );
+
+  assert.match(gearSource, /type StageVariant =[^;]*"pilot"/);
+  assert.match(gearSource, /stage\.id === 5 && <PilotBaseDetails/);
+  assert.match(gearSource, /function PilotGearShape/);
+  assert.match(gearSource, /case "engine":/);
+  assert.match(gearSource, /case "intake":/);
+  assert.match(gearSource, /case "gauge":/);
+  assert.match(gearSource, /case "afterburner":/);
+  assert.match(gearSource, /case "jetmodel":/);
+  assert.match(typeSource, /\| "engine"/);
+  assert.match(typeSource, /\| "jetmodel"/);
+  assert.match(css, /body\.stage-pilot\s*\{/);
+  assert.match(css, /\.pilot-base-details/);
+  assert.match(css, /\.gear-variant-pilot\s*\{/);
 });
 
 test("old stable reward ids still sanitize and load", () => {

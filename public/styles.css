@@ -67,6 +67,12 @@ body.stage-modern {
   --theme-soft: #ccfbf1;
 }
 
+body.stage-pilot {
+  --theme: #0369a1;
+  --theme-dark: #0c4a6e;
+  --theme-soft: #e0f2fe;
+}
+
 button,
 input {
   font: inherit;
@@ -728,6 +734,28 @@ body.stage-medieval .body { fill: #94a3b8; stroke: #334155; }
 body.stage-medieval .leg { fill: #1d4ed8; stroke: #1e3a8a; }
 body.stage-modern .body { fill: #4ade80; stroke: #166534; }
 body.stage-modern .leg { fill: #475569; stroke: #1f2937; }
+body.stage-pilot .body { fill: #0284c7; stroke: #0c4a6e; }
+body.stage-pilot .leg { fill: #334155; stroke: #0f172a; }
+
+.pilot-base-details path {
+  fill: none;
+  stroke: #f8fafc;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
+}
+
+.pilot-base-details .pilot-headset,
+.pilot-base-details .pilot-microphone {
+  stroke: #0f172a;
+  stroke-width: 4;
+}
+
+.pilot-base-details .pilot-wings {
+  fill: #f97316;
+  stroke: #9a3412;
+  stroke-width: 2;
+}
 
 .gear-layer {
   opacity: 0;
@@ -776,6 +804,60 @@ body.stage-modern .leg { fill: #475569; stroke: #1f2937; }
 .weapon-layer .weapon-gem,
 .weapon-layer .weapon-pommel { fill: var(--gear-fill); stroke: var(--gear-stroke); stroke-width: 3; }
 .weapon-layer .weapon-glow { fill: var(--gear-fill); opacity: 0.72; stroke: none; }
+
+.gear-variant-pilot .pilot-fill {
+  fill: var(--gear-fill);
+  stroke: var(--gear-stroke);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
+}
+
+.gear-variant-pilot .pilot-accent {
+  fill: var(--gear-accent);
+  stroke: var(--gear-stroke);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
+}
+
+.gear-variant-pilot .pilot-line,
+.gear-variant-pilot .pilot-accent-line {
+  fill: none;
+  stroke: var(--gear-stroke);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
+}
+
+.gear-variant-pilot .pilot-accent-line {
+  stroke: var(--gear-accent);
+}
+
+.gear-variant-pilot .pilot-line-fill {
+  fill: var(--gear-stroke);
+  stroke: var(--gear-stroke);
+  stroke-width: 2;
+}
+
+.gear-variant-pilot .pilot-signal-red {
+  fill: #ef4444;
+  stroke: #7f1d1d;
+  stroke-width: 2;
+}
+
+.gear-variant-pilot .pilot-signal-green {
+  fill: #22c55e;
+  stroke: #14532d;
+  stroke-width: 2;
+}
+
+.gear-variant-pilot .pilot-flame {
+  fill: #f59e0b;
+  stroke: #c2410c;
+  stroke-linejoin: round;
+  stroke-width: 3;
+}
 .helmet-layer path { fill: var(--gear-fill); stroke: var(--gear-stroke); stroke-linecap: round; stroke-linejoin: round; stroke-width: 3; }
 .helmet-layer path:nth-child(2) { fill: var(--gear-accent); }
 .helmet-layer path:nth-child(n+3) { fill: none; }
@@ -844,6 +926,12 @@ body.stage-modern .leg { fill: #475569; stroke: #1f2937; }
   --gear-fill: #ccfbf1;
   --gear-accent: #0f766e;
   --gear-stroke: #134e4a;
+}
+
+.gear-variant-pilot {
+  --gear-fill: #e0f2fe;
+  --gear-accent: #f97316;
+  --gear-stroke: #0c4a6e;
 }
 
 .progress-track,
@@ -1101,8 +1189,12 @@ body.word-check-is-open {
 
 .word-check-option {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 58px;
+  grid-template-columns: minmax(0, 1fr);
   min-width: 0;
+}
+
+.word-check-option.has-playback {
+  grid-template-columns: minmax(0, 1fr) 58px;
 }
 
 .word-check-choice {
@@ -1114,7 +1206,7 @@ body.word-check-is-open {
   min-height: 74px;
   padding: 12px 48px 12px 12px;
   border: 2px solid var(--line);
-  border-radius: 8px 0 0 8px;
+  border-radius: 8px;
   background: #ffffff;
   color: var(--ink);
   cursor: pointer;
@@ -1123,6 +1215,10 @@ body.word-check-is-open {
   line-height: 1;
   text-align: center;
   touch-action: manipulation;
+}
+
+.word-check-option.has-playback .word-check-choice {
+  border-radius: 8px 0 0 8px;
 }
 
 .word-check-choice-play {
@@ -1714,6 +1810,29 @@ body.word-check-is-open {
 .trip-monster.monster-stage-4 .monster-accent-2 { fill: #67e8f9; }
 .trip-monster.monster-stage-4 .monster-accent-3 { fill: #22c55e; }
 .trip-monster.monster-stage-4 .monster-accent-4 { fill: #0f766e; }
+
+.trip-monster.monster-stage-5 {
+  --monster-fill: #e0f2fe;
+  --monster-accent: #f97316;
+  --monster-stroke: #0c4a6e;
+  --monster-label: #0c4a6e;
+}
+
+.trip-monster.monster-stage-5 .monster-accent-1 { fill: #38bdf8; }
+.trip-monster.monster-stage-5 .monster-accent-2 { fill: #facc15; }
+.trip-monster.monster-stage-5 .monster-accent-3 { fill: #fb7185; }
+.trip-monster.monster-stage-5 .monster-accent-4 { fill: #a78bfa; }
+
+.trip-monster.monster-kind-flying-dragon {
+  bottom: 72px;
+  width: 148px;
+  height: 132px;
+}
+
+.flying-dragon-creature-art {
+  height: 104px;
+  filter: drop-shadow(0 14px 0 rgba(14, 116, 144, 0.12));
+}
 
 .trip-monster.monster-variant-1 { transform: translateX(-50%) scale(0.9, 1.08); }
 .trip-monster.monster-variant-2 { transform: translateX(-50%) rotate(-3deg); }

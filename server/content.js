@@ -1,6 +1,6 @@
 "use strict";
 
-const CONTENT_VERSION = 5;
+const CONTENT_VERSION = 6;
 
 const FIRST_100 = [
   "the", "of", "and", "a", "to", "in", "is", "you", "that", "it",
@@ -93,10 +93,49 @@ const SEVENTH_100 = [
   "surprise", "French", "died", "beat", "exactly", "remain", "dress", "cat", "couldn't", "fingers",
 ];
 
+const EIGHTH_100 = [
+  "row", "least", "catch", "climbed", "wrote", "shouted", "continued", "itself", "airport", "plains",
+  "gas", "England", "burning", "design", "joined", "foot", "law", "ears", "glass", "you're",
+  "grew", "skin", "valley", "cents", "key", "president", "brown", "trouble", "cool", "cloud",
+  "lost", "sent", "symbols", "wear", "bad", "save", "experiment", "engine", "alone", "drawing",
+  "east", "pay", "single", "touch", "information", "express", "mouth", "yard", "equal", "decimal",
+  "yourself", "control", "practice", "report", "straight", "rise", "statement", "stick", "party", "seeds",
+  "suppose", "woman", "coast", "bank", "period", "wire", "choose", "clean", "visit", "bit",
+  "whose", "received", "garden", "please", "strange", "caught", "fell", "team", "God", "captain",
+  "direct", "ring", "serve", "child", "desert", "increase", "history", "cost", "maybe", "business",
+  "separate", "break", "uncle", "hunting", "flow", "lady", "students", "human", "art", "feeling",
+];
+
+const NINTH_100 = [
+  "supply", "corner", "electric", "insects", "crops", "tone", "hit", "sand", "doctor", "provide",
+  "thus", "won't", "cook", "bones", "tail", "board", "modern", "compound", "mine", "wasn't",
+  "fit", "addition", "belong", "safe", "soldiers", "guess", "silent", "trade", "rather", "compare",
+  "crowd", "poem", "enjoy", "elements", "indicate", "except", "expect", "flat", "seven", "interesting",
+  "sense", "string", "blow", "famous", "value", "wings", "movement", "pole", "exciting", "branches",
+  "thick", "blood", "lie", "spot", "bell", "fun", "loud", "consider", "suggested", "thin",
+  "position", "entered", "fruit", "tied", "rich", "dollars", "send", "sight", "chief", "Japanese",
+  "stream", "planets", "rhythm", "eight", "science", "major", "observe", "tube", "necessary", "weight",
+  "meat", "lifted", "process", "army", "hat", "property", "particular", "swim", "terms", "current",
+  "park", "sell", "shoulder", "industry", "wash", "block", "spread", "cattle", "wife", "sharp",
+];
+
+const TENTH_100 = [
+  "company", "radio", "we'll", "action", "capital", "factories", "settled", "yellow", "isn't", "southern",
+  "truck", "fair", "printed", "wouldn't", "ahead", "chance", "born", "level", "triangle", "molecules",
+  "France", "repeated", "column", "western", "church", "sister", "oxygen", "plural", "various", "agreed",
+  "opposite", "wrong", "chart", "prepared", "pretty", "solution", "fresh", "shop", "suffix", "especially",
+  "shoes", "actually", "nose", "afraid", "dead", "sugar", "adjective", "fig", "office", "huge",
+  "gun", "similar", "death", "score", "forward", "stretched", "experience", "rose", "allow", "fear",
+  "workers", "Washington", "Greek", "women", "bought", "led", "march", "northern", "create", "British",
+  "difficult", "match", "win", "doesn't", "steel", "total", "deal", "determine", "evening", "nor",
+  "rope", "cotton", "apple", "details", "entire", "corn", "substances", "smell", "tools", "conditions",
+  "cows", "track", "arrived", "located", "sir", "seat", "division", "effect", "underline", "view",
+];
+
 const REWARD_SLOTS = [
   "weapon", "boots", "shield", "cape", "armor", "belt", "gloves", "helmet", "banner", "crown",
   "medal", "gem", "pack", "lantern", "crest", "star", "map", "torch", "flag", "trophy",
-  "compass", "scroll", "badge", "canteen", "whistle",
+  "compass", "scroll", "badge", "canteen", "whistle", "engine", "intake", "gauge", "afterburner", "jetmodel",
 ];
 
 const STAGE_REWARD_SLOT_OVERRIDES = {
@@ -131,6 +170,14 @@ const REWARD_NAMES = {
     "Honor Patch", "Signal Beacon", "Field Pack", "Camp Lantern", "Service Crest",
     "Service Star", "Field Map", "Signal Light", "Unit Flag", "Challenge Cup",
     "Field Compass", "Mission Plan", "Service Badge", "Field Canteen", "Team Whistle",
+  ],
+  5: [
+    "Control Stick", "Landing Gear Boots", "Wing Panel", "Tail Fin", "Fuselage Flight Suit",
+    "Seat Harness", "Throttle Gloves", "Flight Helmet", "Rudder Flag", "Canopy Visor",
+    "Altimeter Badge", "Radar Nose", "Ejection Seat Pack", "Wingtip Light", "Squadron Roundel",
+    "Navigation Light", "Flight Computer", "Taxi Light", "Aileron Panel", "Turbine Blade",
+    "Gyro Compass", "Flap Control", "Air Brake", "Drop Tank", "Pitot Tube",
+    "Turbofan Engine", "Air Intake", "Cockpit Gauge", "Afterburner Ring", "Mini Jet Model",
   ],
 };
 
@@ -187,8 +234,28 @@ const STAGES = [
     fieldTrip: {
       title: "Modern Field Trip",
       intro: "Protect the city course from cyber wolves and sky dragons.",
-      finish: "All stages complete!",
+      finish: "Stage 5 unlocked!",
       creatures: ["Cyber Wolf", "Sky Dragon", "Neon Wolf", "Steel Dragon", "Scout Wolf"],
+    },
+  },
+  {
+    id: 5,
+    title: "Stage 5",
+    subtitle: "Jet Pilot",
+    themeClass: "stage-pilot",
+    heroName: "Jet Pilot",
+    words: [...EIGHTH_100, ...NINTH_100, ...TENTH_100],
+    fieldTrip: {
+      title: "Sky Dragon Field Trip",
+      intro: "Cross the airfield while friendly flying dragons swoop through the clouds.",
+      finish: "Final flight complete!",
+      creatures: [
+        "Cloudwing Flying Dragon",
+        "Stormtail Flying Dragon",
+        "Sunflare Flying Dragon",
+        "Jetstream Flying Dragon",
+        "Skyguard Flying Dragon",
+      ],
     },
   },
 ];

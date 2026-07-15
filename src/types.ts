@@ -24,7 +24,12 @@ export type RewardSlot =
   | "scroll"
   | "badge"
   | "canteen"
-  | "whistle";
+  | "whistle"
+  | "engine"
+  | "intake"
+  | "gauge"
+  | "afterburner"
+  | "jetmodel";
 
 export interface RewardItem {
   id: string;
