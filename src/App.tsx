@@ -87,6 +87,7 @@ interface TripCreature {
   name: string;
   visualKey: string;
   variant: number;
+  kind: "wolf" | "dragon";
 }
 
 interface FieldTripState {
@@ -98,6 +99,10 @@ interface FieldTripState {
   creature: TripCreature | null;
   lastTime: number;
   swinging: boolean;
+  defending: boolean;
+  attackCharge: number;
+  attackEffectKey: number;
+  blockEffectKey: number;
   message: string;
 }
 
@@ -132,8 +137,9 @@ type AppAction =
   | { type: "bumpMaze"; message: string }
   | { type: "openFieldTrip"; stageId: number; creature: TripCreature; message: string }
   | { type: "closeFieldTrip" }
-  | { type: "moveFieldTrip"; direction: "left" | "right" | "hit"; creatures?: string[]; stageId?: number }
+  | { type: "moveFieldTrip"; direction: "left" | "right" | "hit" | "defend"; creatures?: string[]; stageId?: number }
   | { type: "clearFieldTripSwing" }
+  | { type: "clearFieldTripDefense" }
   | { type: "tickFieldTrip"; timestamp: number; creatures: string[] }
   | { type: "stopGames" };
 
@@ -156,7 +162,11 @@ const initialState: AppState = {
     creature: null,
     lastTime: 0,
     swinging: false,
-    message: "Move left or right and hit the monsters.",
+    defending: false,
+    attackCharge: 0,
+    attackEffectKey: 0,
+    blockEffectKey: 0,
+    message: "Move, attack, and defend against the creatures.",
   },
   loading: true,
   speaking: false,
@@ -164,6 +174,11 @@ const initialState: AppState = {
 
 const WORD_CHECK_CHANCE = 0.35;
 const WORD_CHECK_FOLLOW_UPS_AFTER_MISS = 2;
+const WORD_CHECK_CORRECT_FEEDBACK_MS = 1_500;
+const WORD_CHECK_WRONG_FEEDBACK_MS = 4_000;
+const FIELD_TRIP_ATTACK_TELEGRAPH_MS = 650;
+const FIELD_TRIP_ATTACK_MS = 1_700;
+const FIELD_TRIP_DEFEND_MS = 1_300;
 
 function reducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
@@ -248,6 +263,10 @@ function reducer(state: AppState, action: AppAction): AppState {
           creature: action.creature,
           lastTime: 0,
           swinging: false,
+          defending: false,
+          attackCharge: 0,
+          attackEffectKey: 0,
+          blockEffectKey: 0,
           message: action.message,
         },
       };
@@ -277,6 +296,17 @@ function reducer(state: AppState, action: AppAction): AppState {
           fieldTrip: {
             ...state.fieldTrip,
             runnerX: Math.min(48, state.fieldTrip.runnerX + 7),
+          },
+        };
+      }
+
+      if (action.direction === "defend") {
+        return {
+          ...state,
+          fieldTrip: {
+            ...state.fieldTrip,
+            defending: true,
+            message: "Shield up! Watch the creature's warning.",
           },
         };
       }
@@ -313,12 +343,15 @@ function reducer(state: AppState, action: AppAction): AppState {
             ? null
             : spawnCreature(action.creatures || [], action.stageId || state.fieldTrip.stageId || 1),
           swinging: true,
+          attackCharge: 0,
           message: `${state.fieldTrip.creature.name} bonked! ${collected}/${TRIP_TARGET}`,
         },
       };
     }
     case "clearFieldTripSwing":
       return { ...state, fieldTrip: { ...state.fieldTrip, swinging: false } };
+    case "clearFieldTripDefense":
+      return { ...state, fieldTrip: { ...state.fieldTrip, defending: false } };
     case "tickFieldTrip": {
       const trip = state.fieldTrip;
 
@@ -332,14 +365,38 @@ function reducer(state: AppState, action: AppAction): AppState {
       const nextX = Math.abs(gap) <= 5
         ? trip.creature.x
         : trip.creature.x + Math.sign(gap) * speed;
-      const creature = {
+      let creature = {
         ...trip.creature,
         x: Math.max(8, Math.min(92, nextX)),
       };
       let message = trip.message;
+      let runnerX = trip.runnerX;
+      let attackCharge = Math.abs(creature.x - trip.runnerX) <= 11
+        ? trip.attackCharge + delta
+        : 0;
+      let attackEffectKey = trip.attackEffectKey;
+      let blockEffectKey = trip.blockEffectKey;
 
-      if (Math.abs(creature.x - trip.runnerX) <= 9) {
-        message = `${creature.name} is close. Hit!`;
+      if (attackCharge >= FIELD_TRIP_ATTACK_MS) {
+        const blocked = trip.defending;
+        attackCharge = 0;
+        attackEffectKey += 1;
+        creature = {
+          ...creature,
+          x: Math.min(92, creature.x + (blocked ? 18 : 10)),
+        };
+
+        if (blocked) {
+          blockEffectKey += 1;
+          message = `Great block! ${creature.name} bounced back.`;
+        } else {
+          runnerX = Math.max(10, trip.runnerX - 7);
+          message = `${creature.name} pushed you back. Defend when you see the warning!`;
+        }
+      } else if (attackCharge >= FIELD_TRIP_ATTACK_TELEGRAPH_MS) {
+        message = `${creature.name} is about to attack. Defend!`;
+      } else if (Math.abs(creature.x - trip.runnerX) <= 11) {
+        message = `${creature.name} is close. Attack or get ready to defend.`;
       }
 
       return {
@@ -348,6 +405,10 @@ function reducer(state: AppState, action: AppAction): AppState {
           ...trip,
           progress: Math.min(100, (trip.collected / TRIP_TARGET) * 100),
           creature,
+          runnerX,
+          attackCharge,
+          attackEffectKey,
+          blockEffectKey,
           lastTime: action.timestamp,
           message,
         },
@@ -376,6 +437,7 @@ export default function App() {
   const queuedProgress = useRef<ProgressState | null>(null);
   const syncInFlight = useRef(false);
   const wordCheckFeedbackTimer = useRef<number>(0);
+  const fieldTripDefenseTimer = useRef<number>(0);
   const pendingWordCheckIndices = useRef<Record<number, number[]>>({});
 
   stateRef.current = state;
@@ -596,7 +658,7 @@ export default function App() {
       type: "openFieldTrip",
       stageId: stage.id,
       creature: spawnCreature(stage.fieldTrip.creatures, stage.id),
-      message: `Bonk ${TRIP_TARGET} monsters to unlock the next stage.`,
+      message: `Defeat ${TRIP_TARGET} creatures and block their attacks.`,
     });
   }, [clearAutoAdvance, stopSpeech]);
 
@@ -956,6 +1018,10 @@ export default function App() {
     speakWord(wordCheck.word);
   }, [speakWord, wordCheck]);
 
+  const playWordCheckChoice = useCallback((choice: string) => {
+    speakWord(choice, { clearAutoAdvance: false });
+  }, [speakWord]);
+
   const answerWordCheck = useCallback((choice: string) => {
     if (!wordCheck) {
       return;
@@ -1085,7 +1151,7 @@ export default function App() {
       wordCheckFeedbackTimer.current = 0;
       setWordCheckFeedback(null);
       answerWordCheck(choice);
-    }, 650);
+    }, correct ? WORD_CHECK_CORRECT_FEEDBACK_MS : WORD_CHECK_WRONG_FEEDBACK_MS);
   }, [answerWordCheck, wordCheck, wordCheckFeedback]);
 
   const goBackOrUndo = useCallback(() => {
@@ -1268,7 +1334,7 @@ export default function App() {
     }
   }, [commitProgress, handleStageComplete, scheduleNextWord, showCelebration]);
 
-  const moveFieldTrip = useCallback((direction: "left" | "right" | "hit") => {
+  const moveFieldTrip = useCallback((direction: "left" | "right" | "hit" | "defend") => {
     if (!requireAuthenticated()) {
       return;
     }
@@ -1287,6 +1353,17 @@ export default function App() {
 
     if (direction === "hit") {
       window.setTimeout(() => dispatch({ type: "clearFieldTripSwing" }), 180);
+    }
+
+    if (direction === "defend") {
+      window.clearTimeout(fieldTripDefenseTimer.current);
+      fieldTripDefenseTimer.current = window.setTimeout(
+        () => {
+          fieldTripDefenseTimer.current = 0;
+          dispatch({ type: "clearFieldTripDefense" });
+        },
+        FIELD_TRIP_DEFEND_MS,
+      );
     }
   }, [requireAuthenticated]);
 
@@ -1568,6 +1645,10 @@ export default function App() {
     if (wordCheckFeedbackTimer.current) {
       window.clearTimeout(wordCheckFeedbackTimer.current);
     }
+
+    if (fieldTripDefenseTimer.current) {
+      window.clearTimeout(fieldTripDefenseTimer.current);
+    }
   }, []);
 
   useEffect(() => {
@@ -1631,9 +1712,10 @@ export default function App() {
       }
 
       if (current.fieldTrip.open) {
-        const directionByKey: Record<string, "left" | "right" | "hit" | undefined> = {
+        const directionByKey: Record<string, "left" | "right" | "hit" | "defend" | undefined> = {
           ArrowLeft: "left",
           ArrowRight: "right",
+          ArrowDown: "defend",
           " ": "hit",
           Enter: "hit",
         };
@@ -1843,6 +1925,7 @@ export default function App() {
         check={wordCheck}
         feedback={wordCheckFeedback}
         onPlay={playWordCheck}
+        onPlayChoice={playWordCheckChoice}
         onChoose={chooseWordCheck}
       />
 
@@ -2223,11 +2306,13 @@ function WordCheckOverlay({
   check,
   feedback,
   onPlay,
+  onPlayChoice,
   onChoose,
 }: {
   check: WordCheckState | null;
   feedback: WordCheckFeedback | null;
   onPlay: () => void;
+  onPlayChoice: (choice: string) => void;
   onChoose: (choice: string) => void;
 }) {
   if (!check) {
@@ -2271,20 +2356,30 @@ function WordCheckOverlay({
             ].filter(Boolean).join(" ");
 
             return (
-              <button
-                key={choice}
-                className={className}
-                type="button"
-                onClick={() => onChoose(choice)}
-                disabled={hasFeedback}
-              >
-                <span className="word-check-choice-label">{choice}</span>
-                {(isCorrectChoice || isWrongSelection) && (
-                  <span className="word-check-mark" aria-hidden="true">
-                    {isCorrectChoice ? "O" : "X"}
-                  </span>
-                )}
-              </button>
+              <div className="word-check-option" key={choice}>
+                <button
+                  className={className}
+                  type="button"
+                  onClick={() => onChoose(choice)}
+                  disabled={hasFeedback}
+                >
+                  <span className="word-check-choice-label">{choice}</span>
+                  {(isCorrectChoice || isWrongSelection) && (
+                    <span className="word-check-mark" aria-hidden="true">
+                      {isCorrectChoice ? "O" : "X"}
+                    </span>
+                  )}
+                </button>
+                <button
+                  className="word-check-choice-play"
+                  type="button"
+                  aria-label={`Play ${choice}`}
+                  title={`Play ${choice}`}
+                  onClick={() => onPlayChoice(choice)}
+                >
+                  <Icon name="speaker" />
+                </button>
+              </div>
             );
           })}
         </div>
@@ -2294,8 +2389,14 @@ function WordCheckOverlay({
             role="status"
             aria-live="polite"
           >
-            <span aria-hidden="true">{feedback.correct ? "O" : "X"}</span>
-            {feedback.correct ? "Correct" : "Wrong"}
+            <span className="word-check-feedback-mark" aria-hidden="true">
+              {feedback.correct ? "O" : "X"}
+            </span>
+            <span className="word-check-feedback-text">
+              {feedback.correct
+                ? "Correct"
+                : `Not quite. The correct word is "${check.word}".`}
+            </span>
           </p>
         )}
       </div>
@@ -2471,10 +2572,17 @@ function FieldTripOverlay({
   open: boolean;
   stage: StageContent | null;
   fieldTrip: FieldTripState;
-  onMove: (direction: "left" | "right" | "hit") => void;
+  onMove: (direction: "left" | "right" | "hit" | "defend") => void;
 }) {
-  const creature = fieldTrip.creature || { x: 92, name: "", visualKey: "stage1-monster-0", variant: 0 };
+  const creature = fieldTrip.creature || {
+    x: 92,
+    name: "",
+    visualKey: "stage1-wolf-0",
+    variant: 0,
+    kind: "wolf" as const,
+  };
   const fieldTripRewards = stage?.rewards || [];
+  const isTelegraphing = fieldTrip.attackCharge >= FIELD_TRIP_ATTACK_TELEGRAPH_MS;
   const runnerStyle = {
     "--runner-x": `${fieldTrip.runnerX}%`,
   } as CSSProperties;
@@ -2498,26 +2606,36 @@ function FieldTripOverlay({
         <div className="trip-header">
           <p>Field Trip</p>
           <h2 id="tripTitle">{stage?.fieldTrip.title || "Run to the finish"}</h2>
-          <span>{stage?.fieldTrip.intro || "Move left or right and bonk cartoon monsters."}</span>
+          <span>{stage?.fieldTrip.intro || "Move, attack, and block each creature's charge."}</span>
         </div>
         <div className="trip-stage" aria-label="Left to right field trip" style={tripStageStyle}>
           <div className="trip-sky" />
           <div className="trip-finish" aria-hidden="true" />
           <div
-            className={`trip-runner${fieldTrip.swinging ? " is-swinging" : ""}`}
+            className={`trip-runner${fieldTrip.swinging ? " is-swinging" : ""}${fieldTrip.defending ? " is-defending" : ""}`}
             aria-hidden="true"
             style={runnerStyle}
           >
             {stage && <Character stage={stage} equippedRewards={fieldTripRewards} />}
+            {fieldTrip.defending && <span className="trip-defense-aura" />}
+            {fieldTrip.blockEffectKey > 0 && (
+              <span className="trip-block-flash" key={fieldTrip.blockEffectKey}>Blocked!</span>
+            )}
           </div>
           <div
-            className={`trip-monster monster-stage-${stage?.id || 1} monster-variant-${creature.variant}`}
+            className={`trip-monster monster-stage-${stage?.id || 1} monster-kind-${creature.kind} monster-variant-${creature.variant}${isTelegraphing ? " is-winding-up" : ""}`}
             aria-hidden="true"
             data-creature={creature.name}
             data-visual-key={creature.visualKey}
             style={creatureStyle}
           >
-            <MonsterArt stageId={stage?.id || 1} variant={creature.variant} />
+            <MonsterArt kind={creature.kind} stageId={stage?.id || 1} variant={creature.variant} />
+            {isTelegraphing && <span className="trip-attack-warning">!</span>}
+            {fieldTrip.attackEffectKey > 0 && (
+              <span className="trip-attack-effect" key={fieldTrip.attackEffectKey}>
+                <i /><i /><i />
+              </span>
+            )}
             <span className="trip-monster-label">{creature.name}</span>
           </div>
           <div className="trip-ground-lines" aria-hidden="true"><span /><span /><span /></div>
@@ -2534,6 +2652,10 @@ function FieldTripOverlay({
           <PressButton className="trip-move trip-hit" ariaLabel="Hit monster" onPress={() => onMove("hit")}>
             <span>Hit</span>
           </PressButton>
+          <PressButton className="trip-move trip-defend" ariaLabel="Defend with shield" onPress={() => onMove("defend")}>
+            <Icon name="shield" />
+            <span>Defend</span>
+          </PressButton>
           <PressButton className="trip-move" ariaLabel="Move right" onPress={() => onMove("right")}>
             <Icon name="right" />
             <span>Right</span>
@@ -2544,63 +2666,58 @@ function FieldTripOverlay({
   );
 }
 
-function MonsterArt({ stageId, variant }: { stageId: number; variant: number }) {
+function MonsterArt({
+  kind,
+  stageId,
+  variant,
+}: {
+  kind: TripCreature["kind"];
+  stageId: number;
+  variant: number;
+}) {
   const accentClass = `monster-accent monster-accent-${variant}`;
 
-  if (stageId === 2) {
+  if (kind === "dragon") {
     return (
-      <svg className="trip-monster-art roman-monster-art" viewBox="0 0 90 76" focusable="false" aria-hidden="true">
-        <path className="monster-shadow" d="M18 66c10-7 44-7 54 0 5 4 2 8-27 8s-32-4-27-8Z" />
-        <path className="monster-body" d="M20 18h50v30c0 15-12 23-25 27-13-4-25-12-25-27Z" />
-        <path className={accentClass} d="M21 18h48v12H21Z" />
-        <path className="monster-crest" d="M45 4c12 3 20 8 24 15H21C25 12 33 7 45 4Z" />
-        <path className="monster-detail" d="M45 20v43M28 39h34" />
-        <circle className="monster-eye" cx="36" cy="37" r="3" />
-        <circle className="monster-eye" cx="54" cy="37" r="3" />
-        <path className="monster-mouth" d="M38 49c5 3 9 3 14 0" />
-      </svg>
-    );
-  }
-
-  if (stageId === 3) {
-    return (
-      <svg className="trip-monster-art medieval-monster-art" viewBox="0 0 96 76" focusable="false" aria-hidden="true">
-        <path className="monster-shadow" d="M24 66c9-7 39-7 48 0 5 4 1 8-24 8s-29-4-24-8Z" />
-        <path className="monster-wing left-wing" d="M36 31 8 16l8 24-10 16 32-9Z" />
-        <path className="monster-wing right-wing" d="M60 31 88 16l-8 24 10 16-32-9Z" />
-        <path className="monster-body" d="M29 20c4-13 34-13 38 0l8 24c3 17-10 27-27 27S18 61 21 44Z" />
-        <path className={accentClass} d="m48 6 7 12H41Z" />
-        <circle className="monster-eye" cx="39" cy="38" r="3" />
-        <circle className="monster-eye" cx="57" cy="38" r="3" />
-        <path className="monster-mouth" d="M40 52c5 4 11 4 16 0" />
-      </svg>
-    );
-  }
-
-  if (stageId === 4) {
-    return (
-      <svg className="trip-monster-art modern-monster-art" viewBox="0 0 86 76" focusable="false" aria-hidden="true">
-        <path className="monster-shadow" d="M17 66c10-7 42-7 52 0 5 4 2 8-26 8s-31-4-26-8Z" />
-        <path className="monster-antenna" d="M43 14V4M34 11 28 3M52 11l6-8" />
-        <path className="monster-body" d="M18 18h50c5 0 8 3 8 8v31c0 5-3 8-8 8H18c-5 0-8-3-8-8V26c0-5 3-8 8-8Z" />
-        <path className={accentClass} d="M20 50h46v9H20Z" />
-        <rect className="monster-eye-panel" x="24" y="29" width="38" height="16" rx="7" />
-        <circle className="monster-eye" cx="34" cy="37" r="3" />
-        <circle className="monster-eye" cx="52" cy="37" r="3" />
-        <path className="monster-detail" d="M16 25h-9M79 25h-9M43 50v9" />
+      <svg
+        className={`trip-monster-art dragon-creature-art stage-creature-${stageId}`}
+        viewBox="0 0 124 92"
+        focusable="false"
+        aria-hidden="true"
+      >
+        <path className="monster-shadow" d="M20 81c16-8 67-8 83 0 7 4 2 8-41 8s-49-4-42-8Z" />
+        <path className="monster-wing" d="M53 43C36 16 14 13 8 14l19 22-14 4 30 20Z" />
+        <path className="monster-tail" d="M39 58C19 56 12 68 5 66c9 12 27 13 44 2Z" />
+        <path className="monster-body" d="M35 43c7-17 38-20 53-5 10 10 11 29 1 39H45c-13-8-18-23-10-34Z" />
+        <path className={accentClass} d="M45 49c9-7 28-7 37 0-2 13-10 21-19 26-10-5-17-13-18-26Z" />
+        <path className="monster-body monster-head" d="M78 28c5-13 25-17 37-6 7 7 5 20-4 27H84c-9-4-11-13-6-21Z" />
+        <path className="monster-crest" d="m84 23-2-15 12 11 8-15 4 17Z" />
+        <path className="monster-leg" d="M45 67v15h12l3-15M76 67l4 15h12l-3-19" />
+        <circle className="monster-eye" cx="101" cy="29" r="3.5" />
+        <path className="monster-mouth" d="M101 39c5 2 9 1 13-2" />
+        <circle className="monster-nose" cx="115" cy="34" r="2.5" />
       </svg>
     );
   }
 
   return (
-    <svg className="trip-monster-art ancient-monster-art" viewBox="0 0 90 76" focusable="false" aria-hidden="true">
-      <path className="monster-shadow" d="M18 66c10-7 44-7 54 0 5 4 2 8-27 8s-32-4-27-8Z" />
-      <path className="monster-body" d="M15 47 22 23l16-9 17 6 15-3 8 20-5 21-18 10-22-2Z" />
-      <path className={accentClass} d="m26 24 11-16 8 15M57 22l10-12 4 17" />
-      <path className="monster-detail" d="m31 34 9 7-8 9M55 33l-7 8 9 8" />
-      <circle className="monster-eye" cx="35" cy="39" r="3" />
-      <circle className="monster-eye" cx="56" cy="39" r="3" />
-      <path className="monster-mouth" d="M37 53c6 4 14 4 20 0" />
+    <svg
+      className={`trip-monster-art wolf-creature-art stage-creature-${stageId}`}
+      viewBox="0 0 124 92"
+      focusable="false"
+      aria-hidden="true"
+    >
+      <path className="monster-shadow" d="M18 81c16-8 68-8 84 0 7 4 2 8-42 8s-49-4-42-8Z" />
+      <path className="monster-tail" d="M33 55C14 53 9 39 18 27c0 12 9 16 22 18Z" />
+      <path className="monster-body" d="M31 43c11-15 47-17 64-2 10 9 8 27-4 36H42c-13-7-19-22-11-34Z" />
+      <path className={accentClass} d="M43 47c11-7 33-8 45-1-4 9-9 16-18 22-11-4-20-11-27-21Z" />
+      <path className="monster-body monster-head" d="M79 32c5-16 29-20 41-7 7 8 2 22-10 27H87c-9-3-13-11-8-20Z" />
+      <path className="monster-crest" d="m84 26-1-17 15 13 10-15 5 20Z" />
+      <path className="monster-snout" d="M104 36h18l-3 11h-17Z" />
+      <path className="monster-leg" d="M42 65v18h13l3-18M78 65l3 18h13l-2-21" />
+      <circle className="monster-eye" cx="102" cy="29" r="3.5" />
+      <circle className="monster-nose" cx="119" cy="40" r="3" />
+      <path className="monster-mouth" d="M106 45c4 3 8 3 12 1" />
     </svg>
   );
 }
@@ -2761,7 +2878,8 @@ function spawnCreature(creatures: FieldTripContent["creatures"], stageId: number
   return {
     x: 84 + Math.random() * 8,
     name: names[index] || "monster",
-    visualKey: `stage${stageId}-monster-${index}`,
+    visualKey: `stage${stageId}-${names[index]?.toLowerCase().includes("dragon") ? "dragon" : "wolf"}-${index}`,
     variant: index % 5,
+    kind: names[index]?.toLowerCase().includes("dragon") ? "dragon" : "wolf",
   };
 }

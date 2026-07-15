@@ -144,9 +144,9 @@ const STAGES = [
     words: FIRST_100,
     fieldTrip: {
       title: "Ancient Field Trip",
-      intro: "Move across the valley and bonk silly cave monsters.",
+      intro: "Cross the valley, face cave wolves and dragons, and block their charges.",
       finish: "Stage 2 unlocked!",
-      creatures: ["Pebble Imp", "Moss Muncher", "Cave Wobble", "Tiny Tusk", "Leaf Sneak"],
+      creatures: ["Cave Wolf", "Ember Dragon", "Moss Wolf", "Stone Dragon", "Moon Wolf"],
     },
   },
   {
@@ -158,9 +158,9 @@ const STAGES = [
     words: [...SECOND_100, ...THIRD_100.slice(0, 50)],
     fieldTrip: {
       title: "Roman Road Field Trip",
-      intro: "Move along the Roman road and bonk silly road monsters.",
+      intro: "Guard the Roman road from swift wolves and bright little dragons.",
       finish: "Stage 3 unlocked!",
-      creatures: ["Road Imp", "Shield Wobble", "Tiny Cyclops", "Vine Sneak", "Helmet Hopper"],
+      creatures: ["Road Wolf", "Sun Dragon", "Laurel Wolf", "Bronze Dragon", "Silver Wolf"],
     },
   },
   {
@@ -172,9 +172,9 @@ const STAGES = [
     words: [...THIRD_100.slice(50), ...FOURTH_100, ...FIFTH_100.slice(0, 50)],
     fieldTrip: {
       title: "Castle Field Trip",
-      intro: "Move past the castle road and bonk tiny forest monsters.",
+      intro: "Defend the castle trail from forest wolves and colorful dragons.",
       finish: "Stage 4 unlocked!",
-      creatures: ["Forest Sprite", "Mini Dragon", "Mushroom Grump", "Castle Wisp", "Batty Blob"],
+      creatures: ["Forest Wolf", "Ruby Dragon", "Snow Wolf", "Castle Dragon", "Shadow Wolf"],
     },
   },
   {
@@ -186,9 +186,9 @@ const STAGES = [
     words: [...FIFTH_100.slice(50), ...SIXTH_100, ...SEVENTH_100],
     fieldTrip: {
       title: "Modern Field Trip",
-      intro: "Move across the city course and bonk goofy robot monsters.",
+      intro: "Protect the city course from cyber wolves and sky dragons.",
       finish: "All stages complete!",
-      creatures: ["Gear Bot", "Spark Orb", "Cone Wobble", "Signal Blob", "Circuit Imp"],
+      creatures: ["Cyber Wolf", "Sky Dragon", "Neon Wolf", "Steel Dragon", "Scout Wolf"],
     },
   },
 ];

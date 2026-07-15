@@ -332,7 +332,7 @@ test("treasure gear inventory is opened from a popup instead of inline panel", (
   assert.match(css, /body\.inventory-is-open,[\s\S]*body\.word-check-is-open\s*\{[\s\S]*overflow:\s*hidden/);
 });
 
-test("field trip uses left right movement and a hit action", () => {
+test("field trip uses movement, attacks, shield defense, and creature-shaped monsters", () => {
   const appSource = fs.readFileSync(
     path.join(__dirname, "..", "src", "App.tsx"),
     "utf8",
@@ -341,19 +341,35 @@ test("field trip uses left right movement and a hit action", () => {
     path.join(__dirname, "..", "public", "styles.css"),
     "utf8",
   );
+  const contentSource = fs.readFileSync(
+    path.join(__dirname, "..", "server", "content.js"),
+    "utf8",
+  );
 
-  assert.match(appSource, /direction:\s*"left"\s*\|\s*"right"\s*\|\s*"hit"/);
+  assert.match(appSource, /direction:\s*"left"\s*\|\s*"right"\s*\|\s*"hit"\s*\|\s*"defend"/);
   assert.match(appSource, /ArrowLeft:\s*"left"/);
   assert.match(appSource, /ArrowRight:\s*"right"/);
+  assert.match(appSource, /ArrowDown:\s*"defend"/);
   assert.match(appSource, /ariaLabel="Hit monster"/);
+  assert.match(appSource, /ariaLabel="Defend with shield"/);
+  assert.match(appSource, /FIELD_TRIP_ATTACK_TELEGRAPH_MS = 650/);
+  assert.match(appSource, /FIELD_TRIP_ATTACK_MS = 1_700/);
+  assert.match(appSource, /FIELD_TRIP_DEFEND_MS = 1_300/);
+  assert.match(appSource, /window\.clearTimeout\(fieldTripDefenseTimer\.current\)/);
+  assert.match(appSource, /Great block!/);
+  assert.match(appSource, /className="trip-defense-aura"/);
+  assert.match(appSource, /className="trip-attack-warning"/);
   assert.match(appSource, /const fieldTripRewards = stage\?\.rewards \|\| \[\]/);
   assert.match(appSource, /<Character stage=\{stage\} equippedRewards=\{fieldTripRewards\} \/>/);
   assert.match(appSource, /function MonsterArt/);
-  assert.match(appSource, /ancient-monster-art/);
-  assert.match(appSource, /roman-monster-art/);
-  assert.match(appSource, /medieval-monster-art/);
-  assert.match(appSource, /modern-monster-art/);
+  assert.match(appSource, /wolf-creature-art/);
+  assert.match(appSource, /dragon-creature-art/);
+  assert.match(appSource, /kind:\s*"wolf"\s*\|\s*"dragon"/);
   assert.match(appSource, /monster-stage-\$\{stage\?\.id \|\| 1\}/);
+  assert.match(contentSource, /"Cave Wolf"/);
+  assert.match(contentSource, /"Ember Dragon"/);
+  assert.match(contentSource, /"Cyber Wolf"/);
+  assert.match(contentSource, /"Sky Dragon"/);
   assert.doesNotMatch(appSource, /ariaLabel="Jump"/);
   assert.doesNotMatch(appSource, /className="trip-creature"/);
   assert.match(css, /\.trip-monster/);
@@ -363,7 +379,12 @@ test("field trip uses left right movement and a hit action", () => {
   assert.match(css, /\.trip-monster\.monster-stage-4/);
   assert.match(css, /\.trip-runner \.character-svg/);
   assert.match(css, /\.trip-runner\.is-swinging \.weapon-layer/);
+  assert.match(css, /\.trip-runner\.is-defending \.shield-layer/);
+  assert.match(css, /\.trip-monster\.is-winding-up/);
+  assert.match(css, /\.trip-defend\s*\{/);
   assert.match(css, /@keyframes trip-weapon-swing/);
+  assert.match(css, /@keyframes trip-shield-raise/);
+  assert.match(css, /@keyframes trip-creature-windup/);
   assert.doesNotMatch(css, /\.trip-runner::after/);
   assert.doesNotMatch(css, /\.trip-monster::before/);
   assert.doesNotMatch(css, /\.trip-lanes/);
@@ -421,6 +442,8 @@ test("known-word clicks can require an audio word check before awarding progress
 
   assert.match(appSource, /const WORD_CHECK_CHANCE = 0\.35/);
   assert.match(appSource, /const WORD_CHECK_FOLLOW_UPS_AFTER_MISS = 2/);
+  assert.match(appSource, /const WORD_CHECK_CORRECT_FEEDBACK_MS = 1_500/);
+  assert.match(appSource, /const WORD_CHECK_WRONG_FEEDBACK_MS = 4_000/);
   assert.match(appSource, /interface WordCheckState/);
   assert.match(appSource, /targetWordIndex/);
   assert.match(appSource, /promptWordIndex/);
@@ -434,6 +457,14 @@ test("known-word clicks can require an audio word check before awarding progress
   assert.match(appSource, /feedback:\s*WordCheckFeedback \| null/);
   assert.match(appSource, /className="word-check-overlay"/);
   assert.match(appSource, /Play sound again/);
+  assert.match(appSource, /onPlayChoice=\{playWordCheckChoice\}/);
+  assert.match(appSource, /aria-label=\{`Play \$\{choice\}`\}/);
+  assert.match(appSource, /className="word-check-choice-play"/);
+  assert.match(appSource, /The correct word is/);
+  assert.match(
+    appSource,
+    /correct \? WORD_CHECK_CORRECT_FEEDBACK_MS : WORD_CHECK_WRONG_FEEDBACK_MS/,
+  );
   assert.match(appSource, /word-check-mark/);
   assert.match(appSource, /feedback\.correct \? "O" : "X"/);
   assert.match(appSource, /setWordCheckFeedback\(\{ choice, correct \}\)/);
@@ -456,6 +487,8 @@ test("known-word clicks can require an audio word check before awarding progress
   assert.match(css, /\.word-check-choice/);
   assert.match(css, /\.word-check-choice\.is-correct/);
   assert.match(css, /\.word-check-choice\.is-wrong/);
+  assert.match(css, /\.word-check-option\s*\{/);
+  assert.match(css, /\.word-check-choice-play\s*\{/);
   assert.match(css, /\.word-check-feedback\.is-correct/);
   assert.match(css, /\.word-check-feedback\.is-wrong/);
 });
