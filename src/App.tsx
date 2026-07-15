@@ -1803,6 +1803,7 @@ export default function App() {
             onAuthenticate={authenticate}
             onUpdateEmail={updateAccountEmail}
             onLogout={logout}
+            onResetProgress={resetProgress}
           />
         </header>
 
@@ -1885,16 +1886,6 @@ export default function App() {
                 <Icon name="shuffle" />
                 <span>Shuffle</span>
               </button>
-              <button
-                className="icon-button wide-icon-button danger"
-                type="button"
-                aria-label="Reset progress"
-                title="Reset progress"
-                onClick={resetProgress}
-              >
-                <Icon name="trash" />
-                <span>Reset</span>
-              </button>
             </div>
 
             {state.speechNotice && (
@@ -1969,12 +1960,14 @@ function AuthPanel({
   onAuthenticate,
   onUpdateEmail,
   onLogout,
+  onResetProgress,
 }: {
   user: User | null;
   message: string;
   onAuthenticate: (mode: "login" | "signup", username: string, password: string) => void;
   onUpdateEmail: (email: string) => void;
   onLogout: () => void;
+  onResetProgress: () => void;
 }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -2010,6 +2003,17 @@ function AuthPanel({
           />
           <button className="auth-button" type="submit">Save</button>
         </form>
+        <details className="parent-controls">
+          <summary>Parent controls</summary>
+          <button
+            className="auth-button danger-account-button"
+            type="button"
+            onClick={onResetProgress}
+          >
+            <Icon name="trash" />
+            <span>Reset all progress</span>
+          </button>
+        </details>
         <p className="auth-message" role="status" aria-live="polite">{message}</p>
       </section>
     );

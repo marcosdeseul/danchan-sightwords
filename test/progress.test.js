@@ -332,6 +332,28 @@ test("treasure gear inventory is opened from a popup instead of inline panel", (
   assert.match(css, /body\.inventory-is-open,[\s\S]*body\.word-check-is-open\s*\{[\s\S]*overflow:\s*hidden/);
 });
 
+test("reset progress is kept in collapsed parent controls away from game actions", () => {
+  const appSource = fs.readFileSync(
+    path.join(__dirname, "..", "src", "App.tsx"),
+    "utf8",
+  );
+  const css = fs.readFileSync(
+    path.join(__dirname, "..", "public", "styles.css"),
+    "utf8",
+  );
+  const secondaryActions = appSource.match(
+    /<div className="secondary-actions">[\s\S]*?<\/div>/,
+  )?.[0] || "";
+
+  assert.match(appSource, /<details className="parent-controls">/);
+  assert.match(appSource, /<summary>Parent controls<\/summary>/);
+  assert.match(appSource, /<span>Reset all progress<\/span>/);
+  assert.doesNotMatch(secondaryActions, /Reset progress|onClick=\{resetProgress\}/);
+  assert.match(css, /\.parent-controls\s*\{/);
+  assert.match(css, /\.danger-account-button\s*\{/);
+  assert.match(css, /\.secondary-actions\s*\{[\s\S]*grid-template-columns:\s*minmax\(88px, 0\.8fr\) 52px 1fr/);
+});
+
 test("field trip uses movement, attacks, shield defense, and creature-shaped monsters", () => {
   const appSource = fs.readFileSync(
     path.join(__dirname, "..", "src", "App.tsx"),

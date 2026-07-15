@@ -12,10 +12,10 @@
     "migrate": "node server/migrate.js",
     "check": "node --check server/server.js && node --check server/auth.js && node --check server/progress.js && node --check server/content.js && tsc --noEmit",
     "test": "npm run test:backend && npm run test:frontend",
-    "test:backend": "node --test",
+    "test:backend": "node --test test/*.test.js",
     "test:frontend": "vitest run",
     "coverage": "npm run coverage:backend && npm run coverage:frontend",
-    "coverage:backend": "node --test --experimental-test-coverage --test-coverage-include=server/auth.js --test-coverage-include=server/content.js --test-coverage-include=server/progress.js --test-coverage-lines=100 --test-coverage-branches=100 --test-coverage-functions=100",
+    "coverage:backend": "node --test --experimental-test-coverage --test-coverage-include=server/auth.js --test-coverage-include=server/content.js --test-coverage-include=server/progress.js --test-coverage-lines=100 --test-coverage-branches=100 --test-coverage-functions=100 test/*.test.js",
     "coverage:frontend": "vitest run --coverage"
   },
   "dependencies": {
