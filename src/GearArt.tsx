@@ -19,7 +19,7 @@ const PILOT_REAR_SLOTS = new Set<RewardSlot>([
 export function Character({ stage, equippedRewards }: CharacterProps) {
   return (
     <svg
-      className={`character-svg character-stage-${stage.id}`}
+      className={`character-svg character-stage-${stage.id} ${stage.themeClass}`}
       viewBox="0 0 220 250"
       role="img"
       aria-label={`${stage.heroName} character`}

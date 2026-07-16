@@ -634,7 +634,8 @@ test("stage 5 uses dedicated pilot and fighter-jet part art", () => {
   assert.match(gearSource, /case "jetmodel":/);
   assert.match(typeSource, /\| "engine"/);
   assert.match(typeSource, /\| "jetmodel"/);
-  assert.match(css, /body\.stage-pilot\s*\{/);
+  assert.match(gearSource, /character-stage-\$\{stage\.id\} \$\{stage\.themeClass\}/);
+  assert.match(css, /body\.stage-pilot,\s*\.character-svg\.stage-pilot\s*\{/);
   assert.match(css, /\.pilot-base-details/);
   assert.match(css, /\.gear-variant-pilot\s*\{/);
 });

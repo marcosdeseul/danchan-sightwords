@@ -43,31 +43,36 @@ body {
   letter-spacing: 0;
 }
 
-body.stage-ancient {
+body.stage-ancient,
+.character-svg.stage-ancient {
   --theme: #a16207;
   --theme-dark: #713f12;
   --theme-soft: #fef3c7;
 }
 
-body.stage-roman {
+body.stage-roman,
+.character-svg.stage-roman {
   --theme: #b91c1c;
   --theme-dark: #7f1d1d;
   --theme-soft: #fee2e2;
 }
 
-body.stage-medieval {
+body.stage-medieval,
+.character-svg.stage-medieval {
   --theme: #2563eb;
   --theme-dark: #1e3a8a;
   --theme-soft: #dbeafe;
 }
 
-body.stage-modern {
+body.stage-modern,
+.character-svg.stage-modern {
   --theme: #0f766e;
   --theme-dark: #134e4a;
   --theme-soft: #ccfbf1;
 }
 
-body.stage-pilot {
+body.stage-pilot,
+.character-svg.stage-pilot {
   --theme: #0369a1;
   --theme-dark: #0c4a6e;
   --theme-soft: #e0f2fe;
@@ -726,16 +731,26 @@ body.auth-required .game-layout {
 .eye { fill: #162033; stroke: none; }
 .smile { fill: none; stroke: #7c4a2d; stroke-linecap: round; stroke-width: 3; }
 
-body.stage-ancient .body { fill: #a3a3a3; stroke: #525252; }
-body.stage-ancient .leg { fill: #92400e; stroke: #451a03; }
-body.stage-roman .body { fill: #b91c1c; stroke: #7f1d1d; }
-body.stage-roman .leg { fill: #facc15; stroke: #92400e; }
-body.stage-medieval .body { fill: #94a3b8; stroke: #334155; }
-body.stage-medieval .leg { fill: #1d4ed8; stroke: #1e3a8a; }
-body.stage-modern .body { fill: #4ade80; stroke: #166534; }
-body.stage-modern .leg { fill: #475569; stroke: #1f2937; }
-body.stage-pilot .body { fill: #0284c7; stroke: #0c4a6e; }
-body.stage-pilot .leg { fill: #334155; stroke: #0f172a; }
+body.stage-ancient .body,
+.character-svg.stage-ancient .body { fill: #a3a3a3; stroke: #525252; }
+body.stage-ancient .leg,
+.character-svg.stage-ancient .leg { fill: #92400e; stroke: #451a03; }
+body.stage-roman .body,
+.character-svg.stage-roman .body { fill: #b91c1c; stroke: #7f1d1d; }
+body.stage-roman .leg,
+.character-svg.stage-roman .leg { fill: #facc15; stroke: #92400e; }
+body.stage-medieval .body,
+.character-svg.stage-medieval .body { fill: #94a3b8; stroke: #334155; }
+body.stage-medieval .leg,
+.character-svg.stage-medieval .leg { fill: #1d4ed8; stroke: #1e3a8a; }
+body.stage-modern .body,
+.character-svg.stage-modern .body { fill: #4ade80; stroke: #166534; }
+body.stage-modern .leg,
+.character-svg.stage-modern .leg { fill: #475569; stroke: #1f2937; }
+body.stage-pilot .body,
+.character-svg.stage-pilot .body { fill: #0284c7; stroke: #0c4a6e; }
+body.stage-pilot .leg,
+.character-svg.stage-pilot .leg { fill: #334155; stroke: #0f172a; }
 
 .pilot-base-details path {
   fill: none;

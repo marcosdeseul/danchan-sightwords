@@ -3,5 +3,7 @@ dist/
 .env
 .DS_Store
 coverage/
+storybook-static/
 npm-debug.log*
+debug-storybook.log
 .playwright-mcp/
