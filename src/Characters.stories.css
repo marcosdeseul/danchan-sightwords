@@ -1,0 +1,123 @@
+.character-story-page {
+  min-height: 100vh;
+  padding: 32px;
+  background: #eef6fb;
+  color: var(--ink);
+}
+
+.character-story-header {
+  width: min(1180px, 100%);
+  margin: 0 auto 24px;
+}
+
+.character-story-header h1,
+.character-story-header p,
+.character-story-card h2,
+.character-story-card p {
+  margin: 0;
+}
+
+.character-story-header h1 {
+  font-size: 2rem;
+}
+
+.character-story-header p {
+  margin-top: 8px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.character-story-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  width: min(1180px, 100%);
+  margin: 0 auto;
+  gap: 16px;
+}
+
+.character-story-grid.is-single {
+  grid-template-columns: minmax(240px, 420px);
+  justify-content: center;
+}
+
+.character-story-card {
+  display: grid;
+  min-width: 0;
+  min-height: 390px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-top: 5px solid var(--theme);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 12px 30px rgba(39, 57, 86, 0.12);
+  text-align: center;
+}
+
+.character-story-card.stage-ancient {
+  --theme: #a16207;
+  --theme-dark: #713f12;
+  --theme-soft: #fef3c7;
+}
+
+.character-story-card.stage-roman {
+  --theme: #b91c1c;
+  --theme-dark: #7f1d1d;
+  --theme-soft: #fee2e2;
+}
+
+.character-story-card.stage-medieval {
+  --theme: #2563eb;
+  --theme-dark: #1e3a8a;
+  --theme-soft: #dbeafe;
+}
+
+.character-story-card.stage-modern {
+  --theme: #0f766e;
+  --theme-dark: #134e4a;
+  --theme-soft: #ccfbf1;
+}
+
+.character-story-card.stage-pilot {
+  --theme: #0369a1;
+  --theme-dark: #0c4a6e;
+  --theme-soft: #e0f2fe;
+}
+
+.character-story-card h2 {
+  font-size: 1.05rem;
+  text-transform: uppercase;
+}
+
+.character-story-card .character-stage {
+  min-height: 270px;
+}
+
+.character-story-card .character-svg {
+  width: min(100%, 238px);
+  max-height: 270px;
+}
+
+.character-story-card p {
+  align-self: end;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+@media (max-width: 540px) {
+  .character-story-page {
+    padding: 20px 14px;
+  }
+
+  .character-story-header h1 {
+    font-size: 1.55rem;
+  }
+
+  .character-story-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .character-story-card {
+    min-height: 350px;
+  }
+}

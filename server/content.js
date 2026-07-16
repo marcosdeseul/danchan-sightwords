@@ -1,6 +1,6 @@
 "use strict";
 
-const CONTENT_VERSION = 4;
+const CONTENT_VERSION = 6;
 
 const FIRST_100 = [
   "the", "of", "and", "a", "to", "in", "is", "you", "that", "it",
@@ -63,7 +63,7 @@ const FIFTH_100 = [
   "plane", "system", "behind", "ran", "round", "boat", "game", "force", "brought", "understand",
   "warm", "common", "bring", "explain", "dry", "though", "language", "shape", "deep", "thousands",
   "yes", "clear", "equation", "yet", "government", "filled", "heat", "full", "hot", "check",
-  "object", "am", "rule", "among", "noun", "power", "cannot", "able", "six", "size",
+  "object", "else", "rule", "among", "noun", "power", "cannot", "able", "six", "size",
   "dark", "ball", "material", "special", "heavy", "fine", "pair", "circle", "include", "built",
 ];
 
@@ -93,11 +93,60 @@ const SEVENTH_100 = [
   "surprise", "French", "died", "beat", "exactly", "remain", "dress", "cat", "couldn't", "fingers",
 ];
 
+const EIGHTH_100 = [
+  "row", "least", "catch", "climbed", "wrote", "shouted", "continued", "itself", "airport", "plains",
+  "gas", "England", "burning", "design", "joined", "foot", "law", "ears", "glass", "you're",
+  "grew", "skin", "valley", "cents", "key", "president", "brown", "trouble", "cool", "cloud",
+  "lost", "sent", "symbols", "wear", "bad", "save", "experiment", "engine", "alone", "drawing",
+  "east", "pay", "single", "touch", "information", "express", "mouth", "yard", "equal", "decimal",
+  "yourself", "control", "practice", "report", "straight", "rise", "statement", "stick", "party", "seeds",
+  "suppose", "woman", "coast", "bank", "period", "wire", "choose", "clean", "visit", "bit",
+  "whose", "received", "garden", "please", "strange", "caught", "fell", "team", "God", "captain",
+  "direct", "ring", "serve", "child", "desert", "increase", "history", "cost", "maybe", "business",
+  "separate", "break", "uncle", "hunting", "flow", "lady", "students", "human", "art", "feeling",
+];
+
+const NINTH_100 = [
+  "supply", "corner", "electric", "insects", "crops", "tone", "hit", "sand", "doctor", "provide",
+  "thus", "won't", "cook", "bones", "tail", "board", "modern", "compound", "mine", "wasn't",
+  "fit", "addition", "belong", "safe", "soldiers", "guess", "silent", "trade", "rather", "compare",
+  "crowd", "poem", "enjoy", "elements", "indicate", "except", "expect", "flat", "seven", "interesting",
+  "sense", "string", "blow", "famous", "value", "wings", "movement", "pole", "exciting", "branches",
+  "thick", "blood", "lie", "spot", "bell", "fun", "loud", "consider", "suggested", "thin",
+  "position", "entered", "fruit", "tied", "rich", "dollars", "send", "sight", "chief", "Japanese",
+  "stream", "planets", "rhythm", "eight", "science", "major", "observe", "tube", "necessary", "weight",
+  "meat", "lifted", "process", "army", "hat", "property", "particular", "swim", "terms", "current",
+  "park", "sell", "shoulder", "industry", "wash", "block", "spread", "cattle", "wife", "sharp",
+];
+
+const TENTH_100 = [
+  "company", "radio", "we'll", "action", "capital", "factories", "settled", "yellow", "isn't", "southern",
+  "truck", "fair", "printed", "wouldn't", "ahead", "chance", "born", "level", "triangle", "molecules",
+  "France", "repeated", "column", "western", "church", "sister", "oxygen", "plural", "various", "agreed",
+  "opposite", "wrong", "chart", "prepared", "pretty", "solution", "fresh", "shop", "suffix", "especially",
+  "shoes", "actually", "nose", "afraid", "dead", "sugar", "adjective", "fig", "office", "huge",
+  "gun", "similar", "death", "score", "forward", "stretched", "experience", "rose", "allow", "fear",
+  "workers", "Washington", "Greek", "women", "bought", "led", "march", "northern", "create", "British",
+  "difficult", "match", "win", "doesn't", "steel", "total", "deal", "determine", "evening", "nor",
+  "rope", "cotton", "apple", "details", "entire", "corn", "substances", "smell", "tools", "conditions",
+  "cows", "track", "arrived", "located", "sir", "seat", "division", "effect", "underline", "view",
+];
+
 const REWARD_SLOTS = [
   "weapon", "boots", "shield", "cape", "armor", "belt", "gloves", "helmet", "banner", "crown",
   "medal", "gem", "pack", "lantern", "crest", "star", "map", "torch", "flag", "trophy",
-  "compass", "scroll", "badge", "canteen", "whistle",
+  "compass", "scroll", "badge", "canteen", "whistle", "engine", "intake", "gauge", "afterburner", "jetmodel",
 ];
+
+const STAGE_REWARD_SLOT_OVERRIDES = {
+  4: {
+    2: "radio",
+  },
+};
+
+const REWARD_ID_ALIASES = {
+  "stage4-shield": "stage4-radio",
+};
 
 const REWARD_NAMES = {
   1: [
@@ -116,11 +165,19 @@ const REWARD_NAMES = {
     "Castle Star", "Knight Map", "Beacon Torch", "Royal Flag", "Tournament Trophy",
   ],
   4: [
-    "Signal Baton", "Runner Boots", "Safety Shield", "Utility Cape", "Modern Vest",
-    "Tool Belt", "Bright Gloves", "Scout Helmet", "Team Banner", "Guide Cap",
-    "Honor Patch", "Crystal Beacon", "Field Pack", "City Lantern", "Service Crest",
-    "Guide Star", "Explorer Map", "Signal Light", "Team Flag", "Victory Cup",
-    "Signal Compass", "Mission Scroll", "Service Badge", "Trail Canteen", "Team Whistle",
+    "Foam Training Gun", "Field Boots", "Field Radio", "Rain Poncho", "Modern Vest",
+    "Tool Belt", "Bright Gloves", "Scout Helmet", "Unit Banner", "Patrol Cap",
+    "Honor Patch", "Signal Beacon", "Field Pack", "Camp Lantern", "Service Crest",
+    "Service Star", "Field Map", "Signal Light", "Unit Flag", "Challenge Cup",
+    "Field Compass", "Mission Plan", "Service Badge", "Field Canteen", "Team Whistle",
+  ],
+  5: [
+    "Control Stick", "Landing Gear Boots", "Wing Panel", "Tail Fin", "Fuselage Flight Suit",
+    "Seat Harness", "Throttle Gloves", "Flight Helmet", "Rudder Flag", "Canopy Visor",
+    "Altimeter Badge", "Radar Nose", "Ejection Seat Pack", "Wingtip Light", "Squadron Roundel",
+    "Navigation Light", "Flight Computer", "Taxi Light", "Aileron Panel", "Turbine Blade",
+    "Gyro Compass", "Flap Control", "Air Brake", "Drop Tank", "Pitot Tube",
+    "Turbofan Engine", "Air Intake", "Cockpit Gauge", "Afterburner Ring", "Mini Jet Model",
   ],
 };
 
@@ -134,9 +191,9 @@ const STAGES = [
     words: FIRST_100,
     fieldTrip: {
       title: "Ancient Field Trip",
-      intro: "Run across the valley and collect friendly cave critters.",
+      intro: "Cross the valley, face cave wolves and dragons, and block their charges.",
       finish: "Stage 2 unlocked!",
-      creatures: ["lizard", "mammoth", "owl", "turtle", "fox"],
+      creatures: ["Cave Wolf", "Ember Dragon", "Moss Wolf", "Stone Dragon", "Moon Wolf"],
     },
   },
   {
@@ -148,9 +205,9 @@ const STAGES = [
     words: [...SECOND_100, ...THIRD_100.slice(0, 50)],
     fieldTrip: {
       title: "Roman Road Field Trip",
-      intro: "Run along the Roman road and collect friendly helper animals.",
+      intro: "Guard the Roman road from swift wolves and bright little dragons.",
       finish: "Stage 3 unlocked!",
-      creatures: ["eagle", "tortoise", "wolf pup", "dove", "pony"],
+      creatures: ["Road Wolf", "Sun Dragon", "Laurel Wolf", "Bronze Dragon", "Silver Wolf"],
     },
   },
   {
@@ -162,9 +219,9 @@ const STAGES = [
     words: [...THIRD_100.slice(50), ...FOURTH_100, ...FIFTH_100.slice(0, 50)],
     fieldTrip: {
       title: "Castle Field Trip",
-      intro: "Run past the castle road and befriend tiny forest monsters.",
+      intro: "Defend the castle trail from forest wolves and colorful dragons.",
       finish: "Stage 4 unlocked!",
-      creatures: ["sprite", "dragonling", "mushroom", "fox", "bat"],
+      creatures: ["Forest Wolf", "Ruby Dragon", "Snow Wolf", "Castle Dragon", "Shadow Wolf"],
     },
   },
   {
@@ -176,29 +233,51 @@ const STAGES = [
     words: [...FIFTH_100.slice(50), ...SIXTH_100, ...SEVENTH_100],
     fieldTrip: {
       title: "Modern Field Trip",
-      intro: "Run across the city course and collect bright helper bots.",
-      finish: "All stages complete!",
-      creatures: ["bot", "star", "rocket", "orb", "spark"],
+      intro: "Protect the city course from cyber wolves and sky dragons.",
+      finish: "Stage 5 unlocked!",
+      creatures: ["Cyber Wolf", "Sky Dragon", "Neon Wolf", "Steel Dragon", "Scout Wolf"],
+    },
+  },
+  {
+    id: 5,
+    title: "Stage 5",
+    subtitle: "Jet Pilot",
+    themeClass: "stage-pilot",
+    heroName: "Jet Pilot",
+    words: [...EIGHTH_100, ...NINTH_100, ...TENTH_100],
+    fieldTrip: {
+      title: "Sky Dragon Field Trip",
+      intro: "Cross the airfield while friendly flying dragons swoop through the clouds.",
+      finish: "Final flight complete!",
+      creatures: [
+        "Cloudwing Flying Dragon",
+        "Stormtail Flying Dragon",
+        "Sunflare Flying Dragon",
+        "Jetstream Flying Dragon",
+        "Skyguard Flying Dragon",
+      ],
     },
   },
 ];
 
 function rewardsForStage(stage) {
   const names = REWARD_NAMES[stage.id];
+  const slotOverrides = STAGE_REWARD_SLOT_OVERRIDES[stage.id] || {};
 
   return names.map((name, index) => ({
-    id: `stage${stage.id}-${REWARD_SLOTS[index]}`,
+    id: `stage${stage.id}-${slotOverrides[index] || REWARD_SLOTS[index]}`,
     name,
-    slot: REWARD_SLOTS[index],
+    slot: slotOverrides[index] || REWARD_SLOTS[index],
     stageId: stage.id,
     milestone: (index + 1) * 10,
-    visualKey: `stage${stage.id}-${REWARD_SLOTS[index]}`,
+    visualKey: `stage${stage.id}-${slotOverrides[index] || REWARD_SLOTS[index]}`,
   }));
 }
 
 const STAGE_BY_ID = new Map(STAGES.map((stage) => [stage.id, stage]));
 const PUBLIC_CONTENT = Object.freeze({
   version: CONTENT_VERSION,
+  rewardAliases: REWARD_ID_ALIASES,
   stages: STAGES.map((stage) => ({
     id: stage.id,
     title: stage.title,
@@ -222,6 +301,7 @@ function allStageIds() {
 module.exports = {
   CONTENT_VERSION,
   PUBLIC_CONTENT,
+  REWARD_ID_ALIASES,
   STAGES,
   stageById,
   allStageIds,
