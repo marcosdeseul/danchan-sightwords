@@ -1892,6 +1892,12 @@ body.reward-reveal-is-open {
   filter: drop-shadow(0 11px 0 rgba(22, 101, 52, 0.12));
 }
 
+.trip-monster-facing-character {
+  display: block;
+  transform: scaleX(-1);
+  transform-origin: center;
+}
+
 .trip-monster-art path,
 .trip-monster-art circle,
 .trip-monster-art rect {

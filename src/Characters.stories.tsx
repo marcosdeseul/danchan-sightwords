@@ -2,6 +2,8 @@ import { useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { Character, GearIcon } from "./GearArt";
 import { TreasureRewardReveal } from "./TreasureRewardReveal";
+import { creatureKind } from "./app/fieldTrip";
+import { MonsterArt } from "./app/components/Overlays";
 import type { RewardItem, RewardSlot, StageContent } from "./types";
 import "./Characters.stories.css";
 
@@ -10,6 +12,20 @@ const REWARD_SLOTS: RewardSlot[] = [
   "medal", "gem", "pack", "lantern", "crest", "star", "map", "torch", "flag", "trophy",
   "compass", "scroll", "badge", "canteen", "whistle", "engine", "intake", "gauge", "afterburner", "jetmodel",
 ];
+
+const FIELD_TRIP_CREATURES: Record<number, string[]> = {
+  1: ["Cave Wolf", "Ember Dragon", "Moss Wolf", "Stone Dragon", "Moon Wolf"],
+  2: ["Road Wolf", "Sun Dragon", "Laurel Wolf", "Bronze Dragon", "Silver Wolf"],
+  3: ["Forest Wolf", "Ruby Dragon", "Snow Wolf", "Castle Dragon", "Shadow Wolf"],
+  4: ["Cyber Wolf", "Sky Dragon", "Neon Wolf", "Steel Dragon", "Scout Wolf"],
+  5: [
+    "Cloudwing Flying Dragon",
+    "Stormtail Flying Dragon",
+    "Sunflare Flying Dragon",
+    "Jetstream Flying Dragon",
+    "Skyguard Flying Dragon",
+  ],
+};
 
 const STAGE_FIXTURES = [
   stageFixture(1, "Ancient Warrior", "stage-ancient", 10, "Stone Hammer"),
@@ -25,6 +41,7 @@ interface ExplorerArgs {
   stageId: number;
   loadout: Loadout;
   rewardId?: string;
+  monsterIndex?: number;
 }
 
 const meta: Meta<ExplorerArgs> = {
@@ -71,6 +88,48 @@ export const CharacterExplorer: Story = {
         initialLoadout={loadout}
       />
     );
+  },
+};
+
+export const AllMonsters: Story = {
+  name: "All monsters",
+  render: () => <MonsterGallery stages={STAGE_FIXTURES} />,
+};
+
+export const MonsterExplorer: Story = {
+  name: "Monster explorer",
+  args: {
+    stageId: 1,
+    loadout: "fully-equipped",
+    monsterIndex: 0,
+  },
+  argTypes: {
+    stageId: {
+      name: "Stage",
+      control: { type: "select" },
+      options: STAGE_FIXTURES.map((stage) => stage.id),
+    },
+    monsterIndex: {
+      name: "Monster",
+      control: {
+        type: "inline-radio",
+        labels: {
+          0: "1",
+          1: "2",
+          2: "3",
+          3: "4",
+          4: "5",
+        },
+      },
+      options: [0, 1, 2, 3, 4],
+    },
+    loadout: { table: { disable: true } },
+    rewardId: { table: { disable: true } },
+  },
+  render: ({ stageId, monsterIndex }) => {
+    const stage = STAGE_FIXTURES.find((candidate) => candidate.id === Number(stageId)) || STAGE_FIXTURES[0];
+
+    return <MonsterGallery stages={[stage]} selectedIndex={Number(monsterIndex) || 0} />;
   },
 };
 
@@ -256,6 +315,69 @@ function CharacterEquipmentExplorer({
   );
 }
 
+function MonsterGallery({
+  stages,
+  selectedIndex,
+}: {
+  stages: StageContent[];
+  selectedIndex?: number;
+}) {
+  const monsters = stages.flatMap((stage) => {
+    const creatureNames = selectedIndex === undefined
+      ? stage.fieldTrip.creatures
+      : [stage.fieldTrip.creatures[Math.min(Math.max(selectedIndex, 0), stage.fieldTrip.creatures.length - 1)]];
+
+    return creatureNames.map((name) => {
+      const variant = stage.fieldTrip.creatures.indexOf(name);
+
+      return {
+        stage,
+        name,
+        kind: creatureKind(name),
+        variant,
+      };
+    });
+  });
+  const single = monsters.length === 1;
+
+  return (
+    <main className="character-story-page monster-story-page">
+      <header className="character-story-header">
+        <h1>{single ? "Monster Explorer" : "Field Trip Monsters"}</h1>
+        <p>
+          {single
+            ? "Choose a stage and monster from Storybook controls."
+            : "Every production monster, stage palette, and visual variant."}
+        </p>
+      </header>
+      <div className={`character-story-grid monster-story-grid${single ? " is-single" : ""}`}>
+        {monsters.map(({ stage, name, kind, variant }) => (
+          <article
+            className={`character-story-card monster-story-card ${stage.themeClass}`}
+            key={`${stage.id}:${name}`}
+            aria-label={`${name}, ${stage.title}`}
+          >
+            <header>
+              <p>{stage.title} · Variant {variant + 1}</p>
+              <h2>{name}</h2>
+            </header>
+            <div className="monster-story-stage" aria-hidden="true">
+              <span className="monster-story-player-cue">Player</span>
+              <div className={`trip-monster monster-stage-${stage.id} monster-kind-${kind} monster-variant-${variant}`}>
+                <span className="trip-monster-facing-character">
+                  <MonsterArt kind={kind} stageId={stage.id} variant={variant} />
+                </span>
+                <span className="trip-monster-label">{name}</span>
+              </div>
+            </div>
+            <p>{kind === "flying-dragon" ? "Flying dragon" : kind === "dragon" ? "Dragon" : "Wolf"} · Faces player</p>
+          </article>
+        ))}
+      </div>
+    </main>
+  );
+}
+
 function CharacterGallery({
   stages,
   loadout,
@@ -339,7 +461,7 @@ function stageFixture(
       title: "",
       intro: "",
       finish: "",
-      creatures: [],
+      creatures: FIELD_TRIP_CREATURES[id],
     },
   };
 }
