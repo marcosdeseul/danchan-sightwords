@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, u
 import type { CSSProperties, ReactNode } from "react";
 import { api } from "./api";
 import { Character, GearIcon } from "./GearArt";
+import { TreasureRewardReveal } from "./TreasureRewardReveal";
 import {
   MAZE_CHEST,
   MAZE_START,
@@ -73,6 +74,11 @@ interface WordCheckState {
 interface WordCheckFeedback {
   choice: string;
   correct: boolean;
+}
+
+interface TreasureRevealState {
+  stageId: number;
+  rewardId: string;
 }
 
 interface MazeState {
@@ -432,6 +438,7 @@ export default function App() {
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [wordCheck, setWordCheck] = useState<WordCheckState | null>(null);
   const [wordCheckFeedback, setWordCheckFeedback] = useState<WordCheckFeedback | null>(null);
+  const [treasureReveal, setTreasureReveal] = useState<TreasureRevealState | null>(null);
   const stateRef = useRef(state);
   const autoAdvanceTimer = useRef<number>(0);
   const queuedProgress = useRef<ProgressState | null>(null);
@@ -439,6 +446,7 @@ export default function App() {
   const wordCheckFeedbackTimer = useRef<number>(0);
   const fieldTripDefenseTimer = useRef<number>(0);
   const pendingWordCheckIndices = useRef<Record<number, number[]>>({});
+  const rewardClaimInFlight = useRef(false);
 
   stateRef.current = state;
 
@@ -630,6 +638,7 @@ export default function App() {
 
     clearAutoAdvance();
     stopSpeech();
+    rewardClaimInFlight.current = false;
     dispatch({ type: "openMaze" });
   }, [clearAutoAdvance, stopSpeech]);
 
@@ -1222,6 +1231,8 @@ export default function App() {
     }
 
     stopSpeech();
+    rewardClaimInFlight.current = false;
+    setTreasureReveal(null);
     dispatch({ type: "stopGames" });
     clearWordCheckFeedback();
     setWordCheck(null);
@@ -1292,6 +1303,10 @@ export default function App() {
   const claimPendingReward = useCallback(() => {
     const current = stateRef.current;
 
+    if (rewardClaimInFlight.current) {
+      return;
+    }
+
     if (!current.content || !current.progress) {
       dispatch({ type: "closeMaze" });
       return;
@@ -1309,6 +1324,8 @@ export default function App() {
       return;
     }
 
+    rewardClaimInFlight.current = true;
+
     const unlockedItems = new Set(stageState.unlockedItems);
     const equippedItems = new Set(stageState.equippedItems);
     const completedMazeMilestones = new Set(stageState.completedMazeMilestones);
@@ -1325,14 +1342,35 @@ export default function App() {
 
     commitProgress(nextProgress);
     dispatch({ type: "closeMaze" });
-    showCelebration(`${reward.name} found!`);
+    setTreasureReveal({ stageId: stage.id, rewardId: reward.id });
+  }, [commitProgress]);
+
+  const continueAfterTreasureReveal = useCallback(() => {
+    const current = stateRef.current;
+    const claimedReward = treasureReveal;
+
+    setTreasureReveal(null);
+    rewardClaimInFlight.current = false;
+
+    if (!claimedReward || !current.content || !current.progress) {
+      return;
+    }
+
+    const stage = current.content.stages.find(
+      (candidate) => candidate.id === claimedReward.stageId,
+    );
+    const stageState = current.progress.stages[String(claimedReward.stageId)];
+
+    if (!stage || !stageState) {
+      return;
+    }
 
     if (isStageComplete(stage, stageState)) {
-      handleStageComplete(stage, nextProgress);
+      handleStageComplete(stage, current.progress);
     } else {
-      scheduleNextWord(1000);
+      scheduleNextWord(0);
     }
-  }, [commitProgress, handleStageComplete, scheduleNextWord, showCelebration]);
+  }, [handleStageComplete, scheduleNextWord, treasureReveal]);
 
   const moveFieldTrip = useCallback((direction: "left" | "right" | "hit" | "defend") => {
     if (!requireAuthenticated()) {
@@ -1440,6 +1478,8 @@ export default function App() {
 
       clearPreviousLocalProgress();
       pendingWordCheckIndices.current = {};
+      rewardClaimInFlight.current = false;
+      setTreasureReveal(null);
       clearWordCheckFeedback();
       setWordCheck(null);
       dispatch({
@@ -1494,12 +1534,19 @@ export default function App() {
     stopSpeech();
     dispatch({ type: "stopGames" });
     setInventoryOpen(false);
+    rewardClaimInFlight.current = false;
+    setTreasureReveal(null);
     clearWordCheckFeedback();
     setWordCheck(null);
     pendingWordCheckIndices.current = {};
     queuedProgress.current = null;
     dispatch({ type: "setUser", user: null, message: "Logged out. Log in or sign up to play." });
   }, [clearAutoAdvance, clearWordCheckFeedback, stopSpeech]);
+
+  useEffect(() => {
+    rewardClaimInFlight.current = false;
+    setTreasureReveal(null);
+  }, [state.user?.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1645,7 +1692,8 @@ export default function App() {
     document.body.classList.toggle("trip-is-open", state.fieldTrip.open);
     document.body.classList.toggle("inventory-is-open", inventoryOpen);
     document.body.classList.toggle("word-check-is-open", Boolean(wordCheck));
-  }, [state.user, state.speaking, state.maze.open, state.fieldTrip.open, state.content, state.progress, inventoryOpen, wordCheck]);
+    document.body.classList.toggle("reward-reveal-is-open", Boolean(treasureReveal));
+  }, [state.user, state.speaking, state.maze.open, state.fieldTrip.open, state.content, state.progress, inventoryOpen, wordCheck, treasureReveal]);
 
   useEffect(() => () => {
     if (wordCheckFeedbackTimer.current) {
@@ -1695,6 +1743,10 @@ export default function App() {
 	        return;
 	      }
 
+      if (treasureReveal) {
+        return;
+      }
+
       if (inventoryOpen && event.key === "Escape") {
         event.preventDefault();
         setInventoryOpen(false);
@@ -1736,7 +1788,7 @@ export default function App() {
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-	  }, [inventoryOpen, moveFieldTrip, moveMaze]);
+	  }, [inventoryOpen, moveFieldTrip, moveMaze, treasureReveal]);
 
   useEffect(() => {
     const handleBeforeUnload = () => {
@@ -1777,6 +1829,45 @@ export default function App() {
       knownPercent: (knownCount / stage.words.length) * 100,
     };
   }, [state.content, state.progress]);
+
+  const treasureRevealDetails = useMemo(() => {
+    if (!treasureReveal || !state.user || !state.content || !state.progress) {
+      return null;
+    }
+
+    const revealStage = state.content.stages.find(
+      (candidate) => candidate.id === treasureReveal.stageId,
+    );
+    const revealStageState = state.progress.stages[String(treasureReveal.stageId)];
+    const revealReward = revealStage
+      ? rewardById(revealStage, treasureReveal.rewardId)
+      : undefined;
+
+    if (
+      !revealStage ||
+      !revealStageState ||
+      !revealReward ||
+      !revealStageState.unlockedItems.includes(revealReward.id) ||
+      !revealStageState.equippedItems.includes(revealReward.id)
+    ) {
+      return null;
+    }
+
+    const equippedIds = new Set(revealStageState.equippedItems);
+
+    return {
+      stage: revealStage,
+      reward: revealReward,
+      equippedRewards: revealStage.rewards.filter((reward) => equippedIds.has(reward.id)),
+    };
+  }, [state.content, state.progress, state.user, treasureReveal]);
+
+  useEffect(() => {
+    if (treasureReveal && !treasureRevealDetails) {
+      rewardClaimInFlight.current = false;
+      setTreasureReveal(null);
+    }
+  }, [treasureReveal, treasureRevealDetails]);
 
   if (state.loading || !state.content || !state.progress || !viewModel) {
     return (
@@ -1933,6 +2024,14 @@ export default function App() {
         maze={state.maze}
         onMove={moveMaze}
       />
+      {treasureRevealDetails && (
+        <TreasureRewardReveal
+          stage={treasureRevealDetails.stage}
+          reward={treasureRevealDetails.reward}
+          equippedRewards={treasureRevealDetails.equippedRewards}
+          onContinue={continueAfterTreasureReveal}
+        />
+      )}
       <FieldTripOverlay
         open={state.fieldTrip.open}
         stage={state.fieldTrip.stageId === null ? null : stageById(state.content, state.fieldTrip.stageId)}
@@ -2339,7 +2438,10 @@ function WordCheckOverlay({
       aria-modal="true"
       aria-labelledby="wordCheckTitle"
     >
-      <div className="word-check-modal">
+      <div
+        className="word-check-modal"
+        key={`${check.stageId}:${check.promptWordIndex}`}
+      >
         <div className="word-check-header">
           <p>Quick word check</p>
           <h2 id="wordCheckTitle">Which word did you hear?</h2>
