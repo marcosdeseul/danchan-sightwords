@@ -360,7 +360,36 @@ test("treasure gear inventory is opened from a popup instead of inline panel", (
   assert.match(appSource, /className="button inventory-open-button"/);
   assert.doesNotMatch(appSource, /className="panel-block gear-block"/);
   assert.match(css, /\.inventory-overlay\[hidden\]/);
-  assert.match(css, /body\.inventory-is-open,[\s\S]*body\.word-check-is-open\s*\{[\s\S]*overflow:\s*hidden/);
+  assert.match(
+    css,
+    /body\.inventory-is-open,[\s\S]*body\.word-check-is-open,[\s\S]*body\.reward-reveal-is-open\s*\{[\s\S]*overflow:\s*hidden/,
+  );
+});
+
+test("claimed treasure opens a visual equipped-item reveal before play resumes", () => {
+  const appSource = fs.readFileSync(
+    path.join(__dirname, "..", "src", "App.tsx"),
+    "utf8",
+  );
+  const revealSource = fs.readFileSync(
+    path.join(__dirname, "..", "src", "TreasureRewardReveal.tsx"),
+    "utf8",
+  );
+  const css = fs.readFileSync(
+    path.join(__dirname, "..", "public", "styles.css"),
+    "utf8",
+  );
+
+  assert.match(appSource, /interface TreasureRevealState/);
+  assert.match(appSource, /rewardClaimInFlight\.current = true/);
+  assert.match(appSource, /setTreasureReveal\(\{ stageId: stage\.id, rewardId: reward\.id \}\)/);
+  assert.match(appSource, /function App\(\)[\s\S]*<TreasureRewardReveal/);
+  assert.match(appSource, /onContinue=\{continueAfterTreasureReveal\}/);
+  assert.doesNotMatch(appSource, /showCelebration\(`\$\{reward\.name\} found!`\)/);
+  assert.match(revealSource, /<GearIcon reward=\{reward\} \/>/);
+  assert.match(revealSource, /<Character stage=\{stage\} equippedRewards=\{revealedLoadout\} \/>/);
+  assert.match(revealSource, /autoFocus/);
+  assert.match(css, /body\.reward-reveal-is-open\s*\{[\s\S]*overflow:\s*hidden/);
 });
 
 test("reset progress is kept in collapsed parent controls away from game actions", () => {
