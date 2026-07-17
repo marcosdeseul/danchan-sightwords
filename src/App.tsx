@@ -53,13 +53,13 @@ interface AuthResponse {
   progress: ProgressState;
 }
 
-interface LastAnswerAction {
+export interface LastAnswerAction {
   stageId: number;
   wordIndex: number;
   previousState: ProgressState;
 }
 
-interface WordCheckState {
+export interface WordCheckState {
   stageId: number;
   targetWordIndex: number;
   promptWordIndex: number;
@@ -71,7 +71,7 @@ interface WordCheckState {
   followUpsRemaining: number;
 }
 
-interface WordCheckFeedback {
+export interface WordCheckFeedback {
   choice: string;
   correct: boolean;
 }
@@ -81,14 +81,14 @@ interface TreasureRevealState {
   rewardId: string;
 }
 
-interface MazeState {
+export interface MazeState {
   open: boolean;
   position: { row: number; col: number };
   message: string;
   bumpCount: number;
 }
 
-interface TripCreature {
+export interface TripCreature {
   x: number;
   name: string;
   visualKey: string;
@@ -96,7 +96,7 @@ interface TripCreature {
   kind: "wolf" | "dragon" | "flying-dragon";
 }
 
-interface FieldTripState {
+export interface FieldTripState {
   open: boolean;
   stageId: number | null;
   runnerX: number;
@@ -112,7 +112,7 @@ interface FieldTripState {
   message: string;
 }
 
-interface AppState {
+export interface AppState {
   content: SightWordsContent | null;
   progress: ProgressState | null;
   user: User | null;
@@ -127,7 +127,7 @@ interface AppState {
   speaking: boolean;
 }
 
-type AppAction =
+export type AppAction =
   | { type: "bootstrapped"; content: SightWordsContent; progress: ProgressState }
   | { type: "accountReady"; user: User | null; progress?: ProgressState; message: string }
   | { type: "setUser"; user: User | null; message: string }
@@ -149,7 +149,7 @@ type AppAction =
   | { type: "tickFieldTrip"; timestamp: number; creatures: string[] }
   | { type: "stopGames" };
 
-const initialState: AppState = {
+export const initialState: AppState = {
   content: null,
   progress: null,
   user: null,
@@ -186,7 +186,7 @@ const FIELD_TRIP_ATTACK_TELEGRAPH_MS = 650;
 const FIELD_TRIP_ATTACK_MS = 1_700;
 const FIELD_TRIP_DEFEND_MS = 1_300;
 
-function reducer(state: AppState, action: AppAction): AppState {
+export function reducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
     case "bootstrapped":
       return {
@@ -522,7 +522,6 @@ export default function App() {
   }, []);
 
   const commitProgress = useCallback((nextProgress: ProgressState, options: {
-    sync?: boolean;
     lastAnswerAction?: LastAnswerAction | null;
   } = {}): ProgressState | null => {
     const content = stateRef.current.content;
@@ -538,7 +537,7 @@ export default function App() {
       lastAnswerAction: options.lastAnswerAction,
     });
 
-    if (stateRef.current.user && options.sync !== false) {
+    if (stateRef.current.user) {
       const user = stateRef.current.user;
       queuedProgress.current = cleanProgress;
 
@@ -973,17 +972,11 @@ export default function App() {
         previousState,
         failedWordIndices: [],
         followUpsRemaining: 0,
-      });
+      }) as WordCheckState;
 
-      if (nextCheck) {
-        clearWordCheckFeedback();
-        setWordCheck(nextCheck);
-        speakWord(nextCheck.word, { clearAutoAdvance: false });
-        return;
-      }
-
-      rememberWordCheckCandidate(stage.id, wordIndex);
-      applyKnownWord({ stageId: stage.id, wordIndex, previousState });
+      clearWordCheckFeedback();
+      setWordCheck(nextCheck);
+      speakWord(nextCheck.word, { clearAutoAdvance: false });
       return;
     }
 
@@ -1056,13 +1049,11 @@ export default function App() {
           previousState: check.previousState,
           failedWordIndices: check.failedWordIndices,
           followUpsRemaining,
-        });
+        }) as WordCheckState;
 
-        if (nextCheck) {
-          setWordCheck(nextCheck);
-          speakWord(nextCheck.word, { clearAutoAdvance: false });
-          return;
-        }
+        setWordCheck(nextCheck);
+        speakWord(nextCheck.word, { clearAutoAdvance: false });
+        return;
       }
 
       setWordCheck(null);
@@ -1111,13 +1102,11 @@ export default function App() {
         previousState: committedProgress || check.previousState,
         failedWordIndices,
         followUpsRemaining: nextFollowUpsRemaining,
-      });
+      }) as WordCheckState;
 
-      if (nextCheck) {
-        setWordCheck(nextCheck);
-        speakWord(nextCheck.word, { clearAutoAdvance: false });
-        return;
-      }
+      setWordCheck(nextCheck);
+      speakWord(nextCheck.word, { clearAutoAdvance: false });
+      return;
     }
 
     setWordCheck(null);
@@ -2042,7 +2031,7 @@ export default function App() {
   );
 }
 
-function Brand({ subtitle, title }: { subtitle: string; title: string }) {
+export function Brand({ subtitle, title }: { subtitle: string; title: string }) {
   return (
     <div className="brand">
       <div className="badge" aria-hidden="true">
@@ -2059,7 +2048,7 @@ function Brand({ subtitle, title }: { subtitle: string; title: string }) {
   );
 }
 
-function AuthPanel({
+export function AuthPanel({
   user,
   message,
   onAuthenticate,
@@ -2168,7 +2157,7 @@ function AuthPanel({
   );
 }
 
-function StageTabs({
+export function StageTabs({
   content,
   progress,
   onSelect,
@@ -2200,7 +2189,7 @@ function StageTabs({
   );
 }
 
-function ScoreStrip({ known, practice, left, total }: {
+export function ScoreStrip({ known, practice, left, total }: {
   known: number;
   practice: number;
   left: number;
@@ -2216,7 +2205,7 @@ function ScoreStrip({ known, practice, left, total }: {
   );
 }
 
-function WordCard({
+export function WordCard({
   stage,
   stageState,
   word,
@@ -2239,11 +2228,7 @@ function WordCard({
   const [wordFontSize, setWordFontSize] = useState(MAX_WORD_FONT_SIZE);
 
   useLayoutEffect(() => {
-    const wordElement = wordRef.current;
-
-    if (!wordElement) {
-      return undefined;
-    }
+    const wordElement = wordRef.current as HTMLDivElement;
 
     let cancelled = false;
     const updateWordSize = () => {
@@ -2320,7 +2305,7 @@ const MIN_WORD_FONT_SIZE = 38;
 const WORD_FONT_FAMILY = 'Inter, ui-rounded, "Arial Rounded MT Bold", "Trebuchet MS", Arial, sans-serif';
 let wordMeasureCanvas: HTMLCanvasElement | null = null;
 
-function fittedWordFontSize(word: string, containerWidth: number): number {
+export function fittedWordFontSize(word: string, containerWidth: number): number {
   if (!containerWidth || typeof document === "undefined") {
     return MAX_WORD_FONT_SIZE;
   }
@@ -2344,7 +2329,7 @@ function fittedWordFontSize(word: string, containerWidth: number): number {
   return Math.max(MIN_WORD_FONT_SIZE, Math.min(MAX_WORD_FONT_SIZE, fittedSize));
 }
 
-function ProgressPanel({
+export function ProgressPanel({
   content,
   stage,
   stageState,
@@ -2411,7 +2396,7 @@ function ProgressPanel({
   );
 }
 
-function WordCheckOverlay({
+export function WordCheckOverlay({
   check,
   feedback,
   onPlay,
@@ -2522,7 +2507,7 @@ function WordCheckOverlay({
   );
 }
 
-function InventoryOverlay({
+export function InventoryOverlay({
   open,
   stage,
   stageState,
@@ -2598,7 +2583,7 @@ function InventoryOverlay({
   );
 }
 
-function MazeOverlay({
+export function MazeOverlay({
   open,
   content,
   progress,
@@ -2681,7 +2666,7 @@ function MazeOverlay({
   );
 }
 
-function FieldTripOverlay({
+export function FieldTripOverlay({
   open,
   stage,
   fieldTrip,
@@ -2865,7 +2850,7 @@ export function MonsterArt({
   );
 }
 
-function PressButton({
+export function PressButton({
   className,
   ariaLabel,
   onPress,
@@ -2898,7 +2883,7 @@ function PressButton({
   );
 }
 
-function rewardStatus(stage: StageContent, stageState: ReturnType<typeof activeStageState>): string {
+export function rewardStatus(stage: StageContent, stageState: ReturnType<typeof activeStageState>): string {
   if (stageState.pendingReward) {
     const reward = rewardById(stage, stageState.pendingReward.itemId);
     return reward
@@ -2920,7 +2905,7 @@ function rewardStatus(stage: StageContent, stageState: ReturnType<typeof activeS
     : `${wordsNeeded} more known word${wordsNeeded === 1 ? "" : "s"} to find ${nextReward.name}.`;
 }
 
-function buildWordCheckCandidateIndices(
+export function buildWordCheckCandidateIndices(
   stage: StageContent,
   stageState: ReturnType<typeof activeStageState>,
   rememberedWordIndices: number[],
@@ -2942,7 +2927,7 @@ function buildWordCheckCandidateIndices(
   );
 }
 
-function createWordCheckState({
+export function createWordCheckState({
   stage,
   targetWordIndex,
   candidateWordIndices,
@@ -2983,7 +2968,7 @@ function createWordCheckState({
   };
 }
 
-function buildWordCheckChoices(stage: StageContent, word: string): string[] {
+export function buildWordCheckChoices(stage: StageContent, word: string): string[] {
   const firstLetter = firstWordLetter(word);
   const availableWords = stage.words.filter((stageWord) => stageWord !== word);
   const sameLetterDistractors = shuffleWords(
@@ -3000,21 +2985,21 @@ function buildWordCheckChoices(stage: StageContent, word: string): string[] {
   return shuffleWords([word, ...distractors]);
 }
 
-function firstWordLetter(word: string): string {
+export function firstWordLetter(word: string): string {
   return word.trim().toLocaleLowerCase("en-US").match(/[a-z]/)?.[0] || "";
 }
 
-function shuffleWords(words: string[]): string[] {
+export function shuffleWords(words: string[]): string[] {
   return [...words].sort(() => Math.random() - 0.5);
 }
 
-function randomWordIndex(wordIndices: number[]): number | null {
+export function randomWordIndex(wordIndices: number[]): number | null {
   return wordIndices.length
     ? wordIndices[Math.floor(Math.random() * wordIndices.length)]
     : null;
 }
 
-function spawnCreature(creatures: FieldTripContent["creatures"], stageId: number): TripCreature {
+export function spawnCreature(creatures: FieldTripContent["creatures"], stageId: number): TripCreature {
   const names = creatures.length ? creatures : ["monster"];
   const index = Math.floor(Math.random() * names.length);
   const name = names[index] || "monster";
@@ -3029,7 +3014,7 @@ function spawnCreature(creatures: FieldTripContent["creatures"], stageId: number
   };
 }
 
-function creatureKind(name: string): TripCreature["kind"] {
+export function creatureKind(name: string): TripCreature["kind"] {
   const normalizedName = name.toLowerCase();
 
   if (normalizedName.includes("flying dragon")) {
