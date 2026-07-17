@@ -350,7 +350,9 @@ export function FieldTripOverlay({
             data-visual-key={creature.visualKey}
             style={creatureStyle}
           >
-            <MonsterArt kind={creature.kind} stageId={stage?.id || 1} variant={creature.variant} />
+            <span className="trip-monster-facing-character">
+              <MonsterArt kind={creature.kind} stageId={stage?.id || 1} variant={creature.variant} />
+            </span>
             {isTelegraphing && <span className="trip-attack-warning">!</span>}
             {fieldTrip.attackEffectKey > 0 && (
               <span className="trip-attack-effect" key={fieldTrip.attackEffectKey}>

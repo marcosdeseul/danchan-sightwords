@@ -1426,6 +1426,9 @@ describe("presentational components", () => {
     expect(screen.getByRole("heading", { name: stage.fieldTrip.title })).toBeInTheDocument();
     expect(container.querySelector(".trip-runner")).toHaveClass("is-swinging", "is-defending");
     expect(container.querySelector(".trip-monster")).toHaveClass("is-winding-up");
+    expect(container.querySelector(".trip-monster-facing-character")).toContainElement(
+      container.querySelector(".trip-monster-art"),
+    );
     expect(screen.getByText("Blocked!")).toBeInTheDocument();
     expect(container.querySelector(".trip-attack-effect")).toBeInTheDocument();
     for (const [name, direction] of [["Move left", "left"], ["Hit monster", "hit"], ["Defend with shield", "defend"], ["Move right", "right"]] as const) {

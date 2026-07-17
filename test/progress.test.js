@@ -307,6 +307,18 @@ test("hidden field trip controls stay hidden despite button display styles", () 
   assert.match(css, /\[hidden\]\s*\{[^}]*display:\s*none\s*!important;/);
 });
 
+test("field-trip monsters face the player character", () => {
+  const css = fs.readFileSync(
+    path.join(__dirname, "..", "public", "styles.css"),
+    "utf8",
+  );
+
+  assert.match(
+    css,
+    /\.trip-monster-facing-character\s*\{[^}]*transform:\s*scaleX\(-1\);/,
+  );
+});
+
 test("logged-out users start on the auth gate instead of the game", () => {
   const html = fs.readFileSync(
     path.join(__dirname, "..", "index.html"),
