@@ -14,6 +14,7 @@ export default defineConfig({
       provider: "v8",
       include: [
         "src/App.tsx",
+        "src/app/**/*.{ts,tsx}",
         "src/api.ts",
         "src/game.ts",
         "src/TreasureRewardReveal.tsx",
