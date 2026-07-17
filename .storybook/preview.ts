@@ -9,7 +9,7 @@ const preview: Preview = {
     },
     options: {
       storySort: {
-        order: ["Characters", ["All stages", "Character explorer", "Treasure reward reveal"]],
+        order: ["Characters", ["All stages", "Character explorer", "All monsters", "Monster explorer", "Treasure reward reveal"]],
       },
     },
   },
