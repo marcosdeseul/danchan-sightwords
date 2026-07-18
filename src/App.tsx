@@ -2320,9 +2320,14 @@ const MIN_WORD_FONT_SIZE = 38;
 const WORD_FONT_FAMILY = 'Inter, ui-rounded, "Arial Rounded MT Bold", "Trebuchet MS", Arial, sans-serif';
 let wordMeasureCanvas: HTMLCanvasElement | null = null;
 
-function fittedWordFontSize(word: string, containerWidth: number): number {
+function fittedWordFontSize(
+  word: string,
+  containerWidth: number,
+  maxFontSize = MAX_WORD_FONT_SIZE,
+  minFontSize = MIN_WORD_FONT_SIZE,
+): number {
   if (!containerWidth || typeof document === "undefined") {
-    return MAX_WORD_FONT_SIZE;
+    return maxFontSize;
   }
 
   if (!wordMeasureCanvas) {
@@ -2332,16 +2337,16 @@ function fittedWordFontSize(word: string, containerWidth: number): number {
   const context = wordMeasureCanvas.getContext("2d");
 
   if (!context) {
-    return MAX_WORD_FONT_SIZE;
+    return maxFontSize;
   }
 
-  context.font = `950 ${MAX_WORD_FONT_SIZE}px ${WORD_FONT_FAMILY}`;
+  context.font = `950 ${maxFontSize}px ${WORD_FONT_FAMILY}`;
 
   const measuredWidth = Math.max(1, context.measureText(word).width);
   const availableWidth = Math.max(120, containerWidth - 12);
-  const fittedSize = Math.floor(MAX_WORD_FONT_SIZE * Math.min(1, availableWidth / measuredWidth));
+  const fittedSize = Math.floor(maxFontSize * Math.min(1, availableWidth / measuredWidth));
 
-  return Math.max(MIN_WORD_FONT_SIZE, Math.min(MAX_WORD_FONT_SIZE, fittedSize));
+  return Math.max(minFontSize, Math.min(maxFontSize, fittedSize));
 }
 
 function ProgressPanel({
@@ -2408,6 +2413,69 @@ function ProgressPanel({
         </div>
       </section>
     </aside>
+  );
+}
+
+const MAX_WORD_CHECK_CHOICE_FONT_SIZE = 36;
+const MIN_WORD_CHECK_CHOICE_FONT_SIZE = 18;
+
+function WordCheckChoiceLabel({ choice }: { choice: string }) {
+  const labelRef = useRef<HTMLSpanElement>(null);
+  const [fontSize, setFontSize] = useState(MAX_WORD_CHECK_CHOICE_FONT_SIZE);
+
+  useLayoutEffect(() => {
+    const labelElement = labelRef.current;
+
+    if (!labelElement) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    const updateChoiceSize = () => {
+      if (cancelled) {
+        return;
+      }
+
+      const nextSize = fittedWordFontSize(
+        choice,
+        labelElement.clientWidth,
+        MAX_WORD_CHECK_CHOICE_FONT_SIZE,
+        MIN_WORD_CHECK_CHOICE_FONT_SIZE,
+      );
+      setFontSize((currentSize) =>
+        Math.abs(currentSize - nextSize) > 0.5 ? nextSize : currentSize,
+      );
+    };
+
+    updateChoiceSize();
+
+    if (document.fonts?.ready) {
+      document.fonts.ready.then(updateChoiceSize).catch(() => undefined);
+    }
+
+    if (typeof ResizeObserver === "undefined") {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const observer = new ResizeObserver(updateChoiceSize);
+    observer.observe(labelElement);
+
+    return () => {
+      cancelled = true;
+      observer.disconnect();
+    };
+  }, [choice]);
+
+  return (
+    <span
+      ref={labelRef}
+      className="word-check-choice-label"
+      style={{ "--word-check-choice-font-size": `${fontSize}px` } as CSSProperties}
+    >
+      {choice}
+    </span>
   );
 }
 
@@ -2479,7 +2547,7 @@ function WordCheckOverlay({
                   onClick={() => onChoose(choice)}
                   disabled={hasFeedback}
                 >
-                  <span className="word-check-choice-label">{choice}</span>
+                  <WordCheckChoiceLabel choice={choice} />
                   {(isCorrectChoice || isWrongSelection) && (
                     <span className="word-check-mark" aria-hidden="true">
                       {isCorrectChoice ? "O" : "X"}

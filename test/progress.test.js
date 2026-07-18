@@ -583,6 +583,31 @@ test("known-word clicks can require an audio word check before awarding progress
   assert.match(css, /\.word-check-feedback\.is-wrong/);
 });
 
+test("long quick-check choices fit on one line with measured font sizing", () => {
+  const appSource = fs.readFileSync(
+    path.join(__dirname, "..", "src", "App.tsx"),
+    "utf8",
+  );
+  const css = fs.readFileSync(
+    path.join(__dirname, "..", "public", "styles.css"),
+    "utf8",
+  );
+  const labelBlock = css.match(/\.word-check-choice-label\s*\{[^}]*\}/)?.[0] || "";
+
+  assert.match(appSource, /function WordCheckChoiceLabel/);
+  assert.match(appSource, /fittedWordFontSize\(\s*choice,/);
+  assert.match(appSource, /observer\.observe\(labelElement\)/);
+  assert.match(appSource, /<WordCheckChoiceLabel choice=\{choice\} \/>/);
+  assert.match(
+    labelBlock,
+    /font-size:\s*var\(--word-check-choice-font-size,\s*36px\)/,
+  );
+  assert.match(labelBlock, /white-space:\s*nowrap/);
+  assert.match(labelBlock, /word-break:\s*keep-all/);
+  assert.match(labelBlock, /overflow-wrap:\s*normal/);
+  assert.doesNotMatch(labelBlock, /overflow-wrap:\s*anywhere/);
+});
+
 test("progress uses Postgres while connected and local storage only as an offline queue", () => {
   const appSource = fs.readFileSync(
     path.join(__dirname, "..", "src", "App.tsx"),
