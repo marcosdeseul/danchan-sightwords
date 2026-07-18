@@ -1037,7 +1037,7 @@ describe("App integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "I know it" }));
     fireEvent.click(screen.getByRole("button", { name: "beta" }));
     fireEvent.click(screen.getByRole("button", { name: "Log out" }));
-    act(() => vi.runAllTimers());
+    act(() => vi.runOnlyPendingTimers());
     vi.useRealTimers();
     first.unmount();
 
