@@ -109,6 +109,68 @@
   font-weight: 800;
 }
 
+.monster-story-grid {
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+.monster-story-card {
+  min-height: 280px;
+  padding: 18px;
+}
+
+.monster-story-card header p,
+.monster-story-card header h2 {
+  margin: 0;
+}
+
+.monster-story-card header p {
+  color: var(--theme-dark);
+  font-size: 0.72rem;
+  font-weight: 950;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.monster-story-card header h2 {
+  margin-top: 4px;
+}
+
+.monster-story-stage {
+  position: relative;
+  min-height: 180px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--theme) 22%, var(--line));
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg, #e6f8ff 0 54%, color-mix(in srgb, var(--theme-soft) 65%, #dcfce7) 54% 100%);
+}
+
+.monster-story-stage .trip-monster {
+  left: 58%;
+  bottom: 18px;
+}
+
+.monster-story-stage .trip-monster.monster-kind-flying-dragon {
+  bottom: 24px;
+}
+
+.monster-story-player-cue {
+  position: absolute;
+  left: 12px;
+  bottom: 18px;
+  display: grid;
+  width: 48px;
+  height: 48px;
+  border: 3px solid #ffffff;
+  border-radius: 50%;
+  background: var(--theme);
+  color: #ffffff;
+  font-size: 0.62rem;
+  font-weight: 950;
+  place-items: center;
+  text-transform: uppercase;
+}
+
 .character-equipment-story {
   display: grid;
   grid-template-columns: minmax(280px, 0.85fr) minmax(420px, 1.45fr);
