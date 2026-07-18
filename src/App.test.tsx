@@ -543,6 +543,7 @@ describe("App pure helpers", () => {
     expect(fittedWordFontSize("word", 50)).toBe(168);
     context.measureText.mockReturnValue({ width: 10_000 });
     expect(fittedWordFontSize("word", 121)).toBe(38);
+    expect(fittedWordFontSize("word", 500, 36, 18)).toBe(18);
     expect(getContext).toHaveBeenCalled();
   });
 });
@@ -1313,6 +1314,14 @@ describe("presentational components", () => {
     const onPlayChoice = vi.fn();
     const onChoose = vi.fn();
     const check = createCheck();
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+      configurable: true,
+      get: () => 240,
+    });
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+      font: "",
+      measureText: () => ({ width: 1_000 }),
+    } as unknown as CanvasRenderingContext2D);
     const { rerender } = render(
       <WordCheckOverlay check={null} feedback={null} onPlay={onPlay} onPlayChoice={onPlayChoice} onChoose={onChoose} />,
     );
@@ -1324,6 +1333,16 @@ describe("presentational components", () => {
     fireEvent.click(screen.getByRole("button", { name: "alpha" }));
     expect(onPlay).toHaveBeenCalledOnce();
     expect(onChoose).toHaveBeenCalledWith("alpha");
+    rerender(
+      <WordCheckOverlay
+        check={{ ...check, word: "everything", choices: ["everything", "exactly", "everyone", "either"] }}
+        feedback={null}
+        onPlay={onPlay}
+        onPlayChoice={onPlayChoice}
+        onChoose={onChoose}
+      />,
+    );
+    expect(screen.getByText("everything").style.getPropertyValue("--word-check-choice-font-size")).toBe("18px");
 
     const correctFeedback: WordCheckFeedback = { choice: "alpha", correct: true };
     rerender(
