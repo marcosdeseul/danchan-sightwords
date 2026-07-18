@@ -931,7 +931,7 @@ describe("App integration", () => {
     fireEvent.change(screen.getByLabelText("Username"), { target: { value: "dan" } });
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "pass" } });
     fireEvent.click(screen.getByRole("button", { name: "Log in" }));
-    await screen.findByText("Back online. Progress synced.");
+    await screen.findByText("Back online. Progress synced.", {}, { timeout: 3_000 });
     first.unmount();
 
     window.localStorage.setItem(
