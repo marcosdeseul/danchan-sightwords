@@ -47,6 +47,7 @@ import type {
   StageContent,
   User,
 } from "./types";
+import { SPEECH_REPLAY_DELAY_MS, SPEECH_START_TIMEOUT_MS } from "./app/speech";
 
 vi.mock("./api", () => ({ api: vi.fn() }));
 
@@ -142,6 +143,7 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  Reflect.deleteProperty(window, "speechSynthesis");
   vi.useRealTimers();
 });
 
@@ -192,22 +194,43 @@ beforeEach(() => {
   vi.spyOn(window, "confirm").mockReturnValue(true);
 });
 
-function installSpeech() {
+function createVoice(
+  overrides: Partial<SpeechSynthesisVoice> = {},
+): SpeechSynthesisVoice {
+  return {
+    default: true,
+    lang: "en-US",
+    localService: true,
+    name: "Android English",
+    voiceURI: "android-en-us",
+    ...overrides,
+  };
+}
+
+function installSpeech(voices: SpeechSynthesisVoice[] = []) {
   const utterances: FakeUtterance[] = [];
   class FakeUtterance {
     lang = "";
     rate = 0;
     pitch = 0;
     volume = 0;
+    voice: SpeechSynthesisVoice | null = null;
     onstart: (() => void) | null = null;
     onend: (() => void) | null = null;
-    onerror: (() => void) | null = null;
+    onerror: ((event?: { error?: string }) => void) | null = null;
 
     constructor(public text: string) {
       utterances.push(this);
     }
   }
   const speechSynthesis = {
+    speaking: false,
+    pending: false,
+    paused: false,
+    getVoices: vi.fn(() => voices),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    resume: vi.fn(),
     cancel: vi.fn(),
     speak: vi.fn(),
   };
@@ -610,18 +633,36 @@ describe("App integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Play word" }));
     expect(screen.getByText("Speech is not available in this browser.")).toBeInTheDocument();
 
-    const speech = installSpeech();
+    const androidVoice = createVoice();
+    const speech = installSpeech([androidVoice]);
     fireEvent.click(screen.getByRole("button", { name: "Play word" }));
     const utterance = speech.utterances.at(-1)!;
-    expect(utterance).toMatchObject({ text: "alpha", lang: "en-US", rate: 0.76, pitch: 1, volume: 1 });
+    expect(utterance).toMatchObject({
+      text: "alpha",
+      lang: "en-US",
+      rate: 0.76,
+      pitch: 1,
+      volume: 1,
+      voice: androidVoice,
+    });
+    expect(speech.speechSynthesis.cancel).not.toHaveBeenCalled();
+    expect(speech.speechSynthesis.resume).toHaveBeenCalledOnce();
+    speech.speechSynthesis.pending = true;
     fireEvent.click(screen.getByRole("button", { name: "Play word" }));
     expect(speech.speechSynthesis.cancel).toHaveBeenCalled();
     act(() => utterance.onstart?.());
-    expect(document.body).toHaveClass("is-speaking");
     act(() => utterance.onend?.());
-    expect(document.body).not.toHaveClass("is-speaking");
     act(() => utterance.onerror?.());
-    expect(screen.getByText("Speech could not play. Try again.")).toBeInTheDocument();
+    await waitFor(() => expect(speech.speechSynthesis.speak).toHaveBeenCalledTimes(2), {
+      timeout: SPEECH_REPLAY_DELAY_MS + 500,
+    });
+    const replayedUtterance = speech.utterances.at(-1)!;
+    act(() => replayedUtterance.onstart?.());
+    expect(document.body).toHaveClass("is-speaking");
+    act(() => replayedUtterance.onend?.());
+    expect(document.body).not.toHaveClass("is-speaking");
+    act(() => replayedUtterance.onerror?.({ error: "network" }));
+    expect(screen.getByText("This speech voice needs an internet connection. Check the connection and try again.")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Practice again" }));
     await screen.findByText("Practice", { selector: ".word-state" });
@@ -633,6 +674,20 @@ describe("App integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Next word" }));
     fireEvent.click(screen.getByRole("button", { name: "Shuffle words" }));
 
+  });
+
+  test("reports a silent device speech engine instead of leaving Android users without feedback", async () => {
+    const content = createContentWithoutRewards();
+    await renderLoggedInApp(content, defaultProgress(content));
+    const speech = installSpeech();
+    vi.useFakeTimers();
+
+    fireEvent.click(screen.getByRole("button", { name: "Play word" }));
+    expect(speech.speechSynthesis.speak).toHaveBeenCalledOnce();
+    act(() => vi.advanceTimersByTime(SPEECH_START_TIMEOUT_MS));
+
+    expect(screen.getByText(/No sound started.*enable text-to-speech/i)).toBeInTheDocument();
+    expect(speech.speechSynthesis.cancel).toHaveBeenCalledOnce();
   });
 
   test("selects an unlocked stage and applies its theme", async () => {
@@ -1369,6 +1424,17 @@ describe("presentational components", () => {
       expect(label).toHaveClass("word-check-choice-label");
       expect(label.style.getPropertyValue("--word-check-choice-font-size")).toBe("18px");
     });
+    rerender(
+      <WordCheckOverlay
+        check={check}
+        feedback={null}
+        speechNotice="Enable text-to-speech in device settings."
+        onPlay={onPlay}
+        onPlayChoice={onPlayChoice}
+        onChoose={onChoose}
+      />,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("Enable text-to-speech in device settings.");
 
     const correctFeedback: WordCheckFeedback = { choice: "alpha", correct: true };
     rerender(

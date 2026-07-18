@@ -23,6 +23,7 @@ import { useStageFlow } from "./app/hooks/useStageFlow";
 import { useTreasureFlow } from "./app/hooks/useTreasureFlow";
 import { useViewModel } from "./app/hooks/useViewModel";
 import { useWordFlow } from "./app/hooks/useWordFlow";
+import { getSpeechVoices } from "./app/speech";
 import { AuthPanel, Brand, ScoreStrip, StageTabs } from "./app/components/Shell";
 import { ProgressPanel, WordCard, fittedWordFontSize } from "./app/components/Word";
 import {
@@ -84,6 +85,7 @@ export default function App() {
   const fieldTripDefenseTimer = useRef<number>(0);
   const pendingWordCheckIndices = useRef<Record<number, number[]>>({});
   const rewardClaimInFlight = useRef(false);
+  const speechControl = useRef({ replayTimer: 0, startTimer: 0, requestId: 0 });
 
   stateRef.current = state;
 
@@ -99,7 +101,7 @@ export default function App() {
     stopSpeech,
     speakWord,
     requireAuthenticated,
-  } = useCoreActions({ stateRef, autoAdvanceTimer, dispatch });
+  } = useCoreActions({ stateRef, autoAdvanceTimer, speechControl, dispatch });
   const { openPendingMaze, openFieldTrip, handleStageComplete } = useStageFlow({
     stateRef,
     rewardClaimInFlight,
@@ -425,15 +427,33 @@ export default function App() {
 	  }, [inventoryOpen, moveFieldTrip, moveMaze, treasureReveal]);
 
   useEffect(() => {
-    const handleBeforeUnload = () => {
-      if ("speechSynthesis" in window) {
-        window.speechSynthesis.cancel();
+    const synthesis = "speechSynthesis" in window
+      ? window.speechSynthesis
+      : null;
+    const prepareVoices = () => {
+      if (synthesis) {
+        getSpeechVoices(synthesis);
       }
     };
+    const handleBeforeUnload = () => {
+      stopSpeech();
+    };
 
+    prepareVoices();
+    synthesis?.addEventListener("voiceschanged", prepareVoices);
     window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, []);
+    return () => {
+      synthesis?.removeEventListener("voiceschanged", prepareVoices);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      if (speechControl.current.replayTimer) {
+        window.clearTimeout(speechControl.current.replayTimer);
+      }
+      if (speechControl.current.startTimer) {
+        window.clearTimeout(speechControl.current.startTimer);
+      }
+      synthesis?.cancel();
+    };
+  }, [stopSpeech]);
 
   const { viewModel, treasureRevealDetails } = useViewModel(state, treasureReveal);
 
@@ -587,6 +607,7 @@ export default function App() {
       <WordCheckOverlay
         check={wordCheck}
         feedback={wordCheckFeedback}
+        speechNotice={state.speechNotice}
         onPlay={playWordCheck}
         onPlayChoice={playWordCheckChoice}
         onChoose={chooseWordCheck}

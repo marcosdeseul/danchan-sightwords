@@ -40,12 +40,14 @@ function WordCheckChoiceLabel({ choice }: { choice: string }) {
 export function WordCheckOverlay({
   check,
   feedback,
+  speechNotice,
   onPlay,
   onPlayChoice,
   onChoose,
 }: {
   check: WordCheckState | null;
   feedback: WordCheckFeedback | null;
+  speechNotice?: string;
   onPlay: () => void;
   onPlayChoice: (choice: string) => void;
   onChoose: (choice: string) => void;
@@ -81,6 +83,11 @@ export function WordCheckOverlay({
           <Icon name="speaker" />
           <span>Play sound again</span>
         </button>
+        {speechNotice && (
+          <p className="notice word-check-speech-notice" role="status">
+            {speechNotice}
+          </p>
+        )}
         <div className="word-check-choices" aria-label="Word choices">
           {check.choices.map((choice) => {
             const isSelected = feedback?.choice === choice;
