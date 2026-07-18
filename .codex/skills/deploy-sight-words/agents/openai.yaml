@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deploy Sight Words"
+  short_description: "Deploy committed ARM64 images to the UTM VM"
+  default_prompt: "Use $deploy-sight-words to build and deploy the latest committed application image to the UTM VM."
