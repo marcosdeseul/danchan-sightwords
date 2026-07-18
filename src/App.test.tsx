@@ -1354,16 +1354,21 @@ describe("presentational components", () => {
     fireEvent.click(screen.getByRole("button", { name: "alpha" }));
     expect(onPlay).toHaveBeenCalledOnce();
     expect(onChoose).toHaveBeenCalledWith("alpha");
+    const longestWords = ["information", "instruments", "interesting", "temperature"];
     rerender(
       <WordCheckOverlay
-        check={{ ...check, word: "everything", choices: ["everything", "exactly", "everyone", "either"] }}
+        check={{ ...check, word: longestWords[0], choices: longestWords }}
         feedback={null}
         onPlay={onPlay}
         onPlayChoice={onPlayChoice}
         onChoose={onChoose}
       />,
     );
-    expect(screen.getByText("everything").style.getPropertyValue("--word-check-choice-font-size")).toBe("18px");
+    longestWords.forEach((word) => {
+      const label = screen.getByText(word);
+      expect(label).toHaveClass("word-check-choice-label");
+      expect(label.style.getPropertyValue("--word-check-choice-font-size")).toBe("18px");
+    });
 
     const correctFeedback: WordCheckFeedback = { choice: "alpha", correct: true };
     rerender(
