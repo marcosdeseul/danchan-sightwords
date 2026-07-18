@@ -120,6 +120,64 @@ input and writing it into the guest as root:
 Use that only when Alpacon file transfer is unavailable. Once Alpamon reports
 connected and commissioned, return to an approved Alpacon Work Session.
 
+## Read-only database reporting
+
+Production PostgreSQL is reachable only through Docker's private network. A
+reporting command therefore needs an approved Alpacon Work Session with
+`command` and `sudo` scopes plus a temporary session policy allowing the
+required `docker *` command. The scope alone is not a sudo grant; confirm the
+bound policy appears on the active Work Session before running the query.
+
+Do not `cd /opt/sight-words` as the session-assigned account. That directory is
+root-owned. Use absolute Compose paths to count signups and summarize saved
+progress without printing production secrets:
+
+```bash
+sudo docker compose \
+  --project-directory /opt/sight-words \
+  --env-file /opt/sight-words/.env.production \
+  -f /opt/sight-words/compose.production.yaml \
+  exec -T postgres \
+  psql -X -U sight_words -d sight_words -P pager=off <<'SQL'
+SELECT
+  u.id,
+  u.username,
+  to_char(
+    u.created_at AT TIME ZONE 'Asia/Seoul',
+    'YYYY-MM-DD HH24:MI'
+  ) AS signed_up_kst,
+  to_char(
+    p.updated_at AT TIME ZONE 'Asia/Seoul',
+    'YYYY-MM-DD HH24:MI'
+  ) AS progress_saved_kst,
+  COALESCE((p.state->>'activeStageId')::int, 1) AS active_stage,
+  COALESCE(p.state->'unlockedStageIds', '[]'::jsonb) AS unlocked_stages,
+  COALESCE((
+    SELECT sum(jsonb_array_length(
+      COALESCE(stage.value->'knownWords', '[]'::jsonb)
+    ))
+    FROM jsonb_each(COALESCE(p.state->'stages', '{}'::jsonb)) AS stage
+  ), 0) AS known_words,
+  COALESCE((
+    SELECT sum(jsonb_array_length(
+      COALESCE(stage.value->'practiceWords', '[]'::jsonb)
+    ))
+    FROM jsonb_each(COALESCE(p.state->'stages', '{}'::jsonb)) AS stage
+  ), 0) AS practice_words,
+  COALESCE(p.state->'completedFieldTrips', '[]'::jsonb)
+    AS completed_field_trips
+FROM users AS u
+LEFT JOIN user_progress AS p ON p.user_id = u.id
+ORDER BY u.id;
+SQL
+```
+
+This reports one row per registered account, including accounts without a
+progress row. In the current content model, Stages 1–5 contain 100, 150, 200,
+250, and 300 words respectively, for 1,000 total. Treat `known_words` as the
+learned-word count; `practice_words` is a separate review queue, not additional
+completion. Close the Work Session immediately after the report.
+
 ## Database backups
 
 The reviewed source templates are:

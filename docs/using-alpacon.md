@@ -88,11 +88,32 @@ For a privileged operation:
 1. Include the `sudo` feature in the approved Work Session.
 2. Bind a temporary, session-scoped sudo policy that permits only the required
    command patterns on the intended VM and user.
-3. Run ordinary `sudo <command>` through the session. Do not use `sudo -n`:
+3. Confirm the active Work Session lists the bound policy before running the
+   command. The `sudo` scope declares the requested capability but does not by
+   itself grant any sudo command.
+4. Run ordinary `sudo <command>` through the session. Do not use `sudo -n`:
    it bypasses Alpacon's approved non-interactive sudo flow and will fail.
 
 Do not create a broad, permanent passwordless-sudo policy to work around a
 missing session policy. The policy must end with the Work Session.
+
+If a command returns `sudo: A terminal is required to authenticate`, first
+check whether the Work Session has an appropriate bound sudo policy. Do not
+work around that error with a password, a TTY, `sudo -n`, or a permanent
+policy. Add the narrow session policy through the approval flow and retry.
+
+The production deployment under `/opt/sight-words` is root-owned. The
+session-assigned account may be unable to enter that directory even when it
+exists. For approved Docker operations, avoid an unprivileged `cd` and use the
+absolute Compose paths through sudo instead:
+
+```bash
+sudo docker compose \
+  --project-directory /opt/sight-words \
+  --env-file /opt/sight-words/.env.production \
+  -f /opt/sight-words/compose.production.yaml \
+  <compose-command>
+```
 
 If the dashboard says the agent is not installed even though `alpamon.service`
 is running, check both `is_connected` and `commissioned`. A newly registered
