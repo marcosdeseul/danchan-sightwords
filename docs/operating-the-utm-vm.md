@@ -129,50 +129,43 @@ required `docker *` command. The scope alone is not a sudo grant; confirm the
 bound policy appears on the active Work Session before running the query.
 
 Do not `cd /opt/sight-words` as the session-assigned account. That directory is
-root-owned. Use absolute Compose paths to count signups and summarize saved
-progress without printing production secrets:
+root-owned. An interactive Alpacon terminal can use the absolute Compose paths
+shown elsewhere in this runbook. For MCP `execute_command`, use `sudo -S` with
+one empty stdin line and keep each audited command short. First discover the
+container:
 
 ```bash
-sudo docker compose \
-  --project-directory /opt/sight-words \
-  --env-file /opt/sight-words/.env.production \
-  -f /opt/sight-words/compose.production.yaml \
-  exec -T postgres \
-  psql -X -U sight_words -d sight_words -P pager=off <<'SQL'
-SELECT
-  u.id,
-  u.username,
-  to_char(
-    u.created_at AT TIME ZONE 'Asia/Seoul',
-    'YYYY-MM-DD HH24:MI'
-  ) AS signed_up_kst,
-  to_char(
-    p.updated_at AT TIME ZONE 'Asia/Seoul',
-    'YYYY-MM-DD HH24:MI'
-  ) AS progress_saved_kst,
-  COALESCE((p.state->>'activeStageId')::int, 1) AS active_stage,
-  COALESCE(p.state->'unlockedStageIds', '[]'::jsonb) AS unlocked_stages,
-  COALESCE((
-    SELECT sum(jsonb_array_length(
-      COALESCE(stage.value->'knownWords', '[]'::jsonb)
-    ))
-    FROM jsonb_each(COALESCE(p.state->'stages', '{}'::jsonb)) AS stage
-  ), 0) AS known_words,
-  COALESCE((
-    SELECT sum(jsonb_array_length(
-      COALESCE(stage.value->'practiceWords', '[]'::jsonb)
-    ))
-    FROM jsonb_each(COALESCE(p.state->'stages', '{}'::jsonb)) AS stage
-  ), 0) AS practice_words,
-  COALESCE(p.state->'completedFieldTrips', '[]'::jsonb)
-    AS completed_field_trips
-FROM users AS u
-LEFT JOIN user_progress AS p ON p.user_id = u.id
-ORDER BY u.id;
-SQL
+sudo -S docker ps --format '{{.Names}}'
 ```
 
-This reports one row per registered account, including accounts without a
+Then run separate read-only statements against the reported PostgreSQL
+container. These examples use the expected name from the production project:
+
+```bash
+sudo -S docker exec sight-words-postgres-1 \
+  psql -X -U sight_words -d sight_words -c \
+  "SELECT count(*) AS users FROM users;"
+
+sudo -S docker exec sight-words-postgres-1 \
+  psql -X -U sight_words -d sight_words -c \
+  "SELECT id, username, created_at AT TIME ZONE 'Asia/Seoul' AS signed_up_kst FROM users ORDER BY id;"
+
+sudo -S docker exec sight-words-postgres-1 \
+  psql -X -U sight_words -d sight_words -c \
+  "SELECT u.username, p.updated_at, COALESCE(jsonb_extract_path_text(p.state,'activeStageId'),'1') AS active_stage, COALESCE(jsonb_extract_path_text(p.state,'unlockedStageIds'),'[]') AS unlocked, COALESCE(jsonb_extract_path_text(p.state,'completedFieldTrips'),'[]') AS trips FROM users u LEFT JOIN user_progress p ON p.user_id=u.id ORDER BY u.id;"
+
+sudo -S docker exec sight-words-postgres-1 \
+  psql -X -U sight_words -d sight_words -c \
+  "SELECT u.username, COALESCE((SELECT sum(jsonb_array_length(COALESCE(jsonb_extract_path(s.value,'knownWords'),'[]'))) FROM jsonb_each(COALESCE(jsonb_extract_path(p.state,'stages'),'{}')) s),0) AS known_words FROM users u LEFT JOIN user_progress p ON p.user_id=u.id ORDER BY u.id;"
+
+sudo -S docker exec sight-words-postgres-1 \
+  psql -X -U sight_words -d sight_words -c \
+  "SELECT u.username, COALESCE((SELECT sum(jsonb_array_length(COALESCE(jsonb_extract_path(s.value,'practiceWords'),'[]'))) FROM jsonb_each(COALESCE(jsonb_extract_path(p.state,'stages'),'{}')) s),0) AS practice_words FROM users u LEFT JOIN user_progress p ON p.user_id=u.id ORDER BY u.id;"
+```
+
+Do not add pipe characters as output delimiters or combine these into one large
+MCP sudo command; the full command must match the Work Session policy. Together
+the queries report every registered account, including accounts without a
 progress row. In the current content model, Stages 1–5 contain 100, 150, 200,
 250, and 300 words respectively, for 1,000 total. Treat `known_words` as the
 learned-word count; `practice_words` is a separate review queue, not additional

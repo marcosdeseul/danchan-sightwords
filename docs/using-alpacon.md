@@ -91,16 +91,25 @@ For a privileged operation:
 3. Confirm the active Work Session lists the bound policy before running the
    command. The `sudo` scope declares the requested capability but does not by
    itself grant any sudo command.
-4. Run ordinary `sudo <command>` through the session. Do not use `sudo -n`:
-   it bypasses Alpacon's approved non-interactive sudo flow and will fail.
+4. In an interactive Alpacon terminal, run ordinary `sudo <command>`. Through
+   MCP `execute_command`, which has no TTY, use `sudo -S <command>` and pass one
+   empty line as the command's stdin data. This lets PAM complete the approved
+   non-interactive flow; never send a password. Do not use `sudo -n`: it
+   bypasses that flow and will fail.
 
 Do not create a broad, permanent passwordless-sudo policy to work around a
 missing session policy. The policy must end with the Work Session.
 
-If a command returns `sudo: A terminal is required to authenticate`, first
-check whether the Work Session has an appropriate bound sudo policy. Do not
-work around that error with a password, a TTY, `sudo -n`, or a permanent
-policy. Add the narrow session policy through the approval flow and retry.
+If an MCP command returns `sudo: A terminal is required to authenticate`, first
+check whether the Work Session has an appropriate bound sudo policy, then
+retry using `sudo -S` with empty stdin. Do not send a password or work around
+the error with `sudo -n` or a permanent policy.
+
+Sudo policy matching evaluates the full command. Keep MCP sudo commands short,
+avoid shell control characters such as pipes, and split complex read-only
+reports into several commands. A denial such as `SUDO_NO_WORKSESSION_POLICY`
+means the complete command did not match the bound rule even when a shorter
+command using the same executable did.
 
 The production deployment under `/opt/sight-words` is root-owned. The
 session-assigned account may be unable to enter that directory even when it
