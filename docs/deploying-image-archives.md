@@ -1,5 +1,10 @@
 # Deploying Docker images to the UTM VM
 
+This guide covers routine application releases. For replacement of the whole
+Ubuntu guest, including PostgreSQL restore, Alpamon commissioning, backups, and
+Cloudflare reconnection, follow the
+[environment rebuild runbook](rebuilding-the-utm-environment.md).
+
 ## Decision
 
 For the first production deployment, the Mac builds the application image and
@@ -53,6 +58,10 @@ ARCHIVE_PATH="/Users/marco/dev/utm/sight-words-game/sight-words-${COMMIT_SHA}.ta
 
 ./scripts/build-image-archive.sh "$IMAGE_TAG" "$ARCHIVE_PATH"
 ```
+
+The build script also writes `${ARCHIVE_PATH}.sha256`. Keep and transfer that
+checksum sidecar with the archive; the replacement-VM setup script requires it
+before loading an image during disaster recovery.
 
 `git status --short` must produce no output before using the commit hash as the
 version. Otherwise the image could contain code that does not match its tag.

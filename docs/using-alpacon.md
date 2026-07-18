@@ -25,6 +25,43 @@ The token needs both API scopes and matching ACLs:
 Keep the token restricted to this VM and rotate or revoke it when it is no
 longer needed.
 
+## Local CLI connection
+
+Install the macOS CLI from Alpacon's Homebrew tap and verify it:
+
+```bash
+brew install alpacax/alpacon/alpacon-cli
+alpacon version
+```
+
+Authenticate to this workspace without opening a browser automatically:
+
+```bash
+alpacon login --workspace personal --region ap1 --no-browser
+```
+
+The CLI prints a device-authorization URL and code. Complete that authorization
+in the browser; the resulting CLI login is stored outside this repository at
+`~/.alpacon/config.json`. Do not print, copy into the repository, or share that
+file.
+
+An MCP-created agent Work Session is not attachable from the human CLI. When a
+human must enter a credential, create a separate short user Work Session from
+the CLI, bind it with `alpacon work-session use <session-id>`, and complete it
+immediately after the handoff.
+
+For credential forwarding, read the value silently into a shell environment
+variable and use `alpacon exec --env="VARIABLE"`. This sends the value without
+putting it on the Alpacon command line or in the command audit log. Never use
+the literal `--env="VARIABLE=value"` form for a credential. Clear both the
+variable and active session afterward:
+
+```bash
+unset VARIABLE
+alpacon work-session complete <session-id>
+alpacon work-session use --unset
+```
+
 ## Work Session workflow
 
 Before a VM change:
@@ -41,8 +78,10 @@ automatically and records the command history.
 
 ## Linux account and sudo rules
 
-Direct root commands are disabled for this workspace. Run commands as the VM's
-normal administrator account, currently `marco`.
+Direct root commands are disabled for this workspace. Commands on the rebuilt
+VM currently run as the session-assigned `cloudflaretunnel` account in the
+`alpacon` group. Confirm the account shown on the Work Session rather than
+hard-coding a local Ubuntu login name.
 
 For a privileged operation:
 
@@ -55,6 +94,13 @@ For a privileged operation:
 Do not create a broad, permanent passwordless-sudo policy to work around a
 missing session policy. The policy must end with the Work Session.
 
+If the dashboard says the agent is not installed even though `alpamon.service`
+is running, check both `is_connected` and `commissioned`. A newly registered
+host can be connected but not yet commissioned until it belongs to an allowed
+server group and Alpamon reconnects. Use UTM guest-agent recovery only to
+inspect or restart Alpamon, then return to a Work Session. See
+[Operating the UTM VM](operating-the-utm-vm.md#emergency-recovery-through-utm).
+
 ## Deployment-specific access
 
 The VM does not need GitHub repository access for the initial deployment model.
@@ -63,6 +109,8 @@ shared folder, and the VM loads that archive during an approved Work Session.
 
 For the exact build, transfer, deployment, verification, and rollback commands,
 read [Deploying Docker images to the UTM VM](deploying-image-archives.md).
+For the access sequence used while replacing the whole guest, read the
+[environment rebuild runbook](rebuilding-the-utm-environment.md).
 
 ## Completion checklist
 

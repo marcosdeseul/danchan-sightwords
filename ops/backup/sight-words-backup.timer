@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the Sight Words PostgreSQL backup nightly
+
+[Timer]
+OnCalendar=*-*-* 03:15:00 Asia/Seoul
+Persistent=true
+AccuracySec=1min
+Unit=sight-words-backup.service
+
+[Install]
+WantedBy=timers.target

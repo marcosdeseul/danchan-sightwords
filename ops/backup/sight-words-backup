@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+umask 077
+
+readonly BACKUP_DIR=/mnt/utm/sight-words-backups
+readonly DEPLOY_DIR=/opt/sight-words
+readonly ENV_FILE=${DEPLOY_DIR}/.env.production
+readonly COMPOSE_FILE=${DEPLOY_DIR}/compose.production.yaml
+
+timestamp=$(date +%Y%m%d-%H%M%S)
+temporary_backup=${BACKUP_DIR}/.sight-words-postgres-${timestamp}.dump.tmp
+completed_backup=${BACKUP_DIR}/sight-words-postgres-${timestamp}.dump
+
+cleanup() {
+  rm -f "${temporary_backup}"
+}
+trap cleanup EXIT
+
+mkdir -p "${BACKUP_DIR}"
+
+docker compose \
+  --project-directory "${DEPLOY_DIR}" \
+  --env-file "${ENV_FILE}" \
+  -f "${COMPOSE_FILE}" \
+  exec -T postgres \
+  pg_dump -Fc -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" \
+  >"${temporary_backup}"
+
+docker compose \
+  --project-directory "${DEPLOY_DIR}" \
+  --env-file "${ENV_FILE}" \
+  -f "${COMPOSE_FILE}" \
+  exec -T postgres \
+  pg_restore --list \
+  <"${temporary_backup}" >/dev/null
+
+chmod 0600 "${temporary_backup}"
+mv "${temporary_backup}" "${completed_backup}"
+
+mapfile -t expired_backups < <(
+  find "${BACKUP_DIR}" \
+    -maxdepth 1 \
+    -type f \
+    -name 'sight-words-postgres-*.dump' \
+    -printf '%T@ %p\n' |
+    sort -nr |
+    tail -n +8 |
+    cut -d' ' -f2-
+)
+
+if ((${#expired_backups[@]} > 0)); then
+  rm -f -- "${expired_backups[@]}"
+fi
+
+trap - EXIT
+printf 'Created and validated %s\n' "${completed_backup}"
