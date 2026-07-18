@@ -743,6 +743,27 @@ describe("App integration", () => {
     expect(putCount).toBe(2);
   });
 
+  test("reports storage failures after a failed online save", async () => {
+    const content = createContentWithoutRewards();
+    const progress = defaultProgress(content);
+    apiMock.mockImplementation(async (path, options = {}) => {
+      if (path === "/api/content") return content;
+      if (path === "/api/me") return { user };
+      if (path === "/api/progress" && !options.method) return { progress };
+      if (path === "/api/progress") throw new Error("server down");
+      throw new Error(`Unexpected API request: ${path}`);
+    });
+    render(<App />);
+    await screen.findByText("dan");
+    vi.spyOn(window.localStorage, "setItem").mockImplementation(() => {
+      throw new Error("storage blocked");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Practice again" }));
+
+    await screen.findByText("Server unavailable. Keep this page open so progress can retry.");
+  });
+
   test("claims a pending maze reward exactly once, reveals it, continues, and manages inventory", async () => {
     const content = createContent();
     const progress = defaultProgress(content);
