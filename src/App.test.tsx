@@ -25,6 +25,7 @@ import App, {
   initialState,
   phraseReadingDayId,
   randomWordIndex,
+  readingDayControl,
   reducer,
   rewardStatus,
   shuffleWords,
@@ -62,6 +63,10 @@ const rewardSlots: RewardSlot[] = ["weapon", "boots", "shield", "cape"];
 test("groups Phrase Forest mastery evidence by local reading day", () => {
   expect(phraseReadingDayId(new Date(2026, 6, 21, 12, 30)))
     .toBe("phrase-reading-day-2026-07-21");
+  const start = vi.fn();
+  expect(readingDayControl(false, start)).toBeUndefined();
+  readingDayControl(true, start)?.();
+  expect(start).toHaveBeenCalledOnce();
 });
 
 function createStage(id: number, words = ["alpha", "apple", "beta", "cat"]): StageContent {
@@ -697,7 +702,7 @@ describe("App integration", () => {
     content.stages.forEach((stage) => {
       completeProgress.stages[String(stage.id)].knownWords = [...stage.words];
     });
-    await renderLoggedInApp(content, completeProgress);
+    const second = await renderLoggedInApp(content, completeProgress);
 
     const phraseButton = screen.getByRole("button", { name: /Phrase Forest/ });
     expect(phraseButton).toBeEnabled();
@@ -712,6 +717,31 @@ describe("App integration", () => {
     fireEvent.click(screen.getByRole("button", { name: /Word Academy/ }));
     await screen.findByLabelText("Current word: alpha");
     expect(document.body).toHaveClass("stage-ancient");
+    second.unmount();
+
+    const masteredProgress = defaultProgress(content);
+    content.stages.forEach((stage) => {
+      masteredProgress.stages[String(stage.id)].knownWords = [...stage.words];
+    });
+    const stageSix = masteredProgress.phraseForest.stages["6"];
+    stageSix.completedMissionIds = Array.from(
+      { length: 20 },
+      (_, index) => `phrase-stage-6-mission-${index + 1}`,
+    );
+    stageSix.completedCheckpointIds = stageSix.completedMissionIds.slice(15, 18);
+    stageSix.checkpointSessionIds = Object.fromEntries(
+      stageSix.completedCheckpointIds.map((missionId, index) => [missionId, `day-${index + 1}`]),
+    );
+    stageSix.completed = true;
+    stageSix.mastered = true;
+    stageSix.restoredArea = true;
+    stageSix.companionUnlocked = true;
+    await renderLoggedInApp(content, masteredProgress);
+
+    fireEvent.click(screen.getByRole("button", { name: /Phrase Forest/ }));
+    const nextDayButton = await screen.findByRole("button", { name: "Test next reading day" });
+    fireEvent.click(nextDayButton);
+    expect(nextDayButton).toBeInTheDocument();
   });
 
   test("handles speech fallbacks and callbacks, word actions, undo, navigation, shuffle, and stage selection", async () => {

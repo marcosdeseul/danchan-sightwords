@@ -485,6 +485,67 @@ describe("Phrase Forest missions", () => {
     expect(phraseReviewMissionForStage(stage, reviewState, "day-2")).toBeNull();
   });
 
+  test("selects review activities and rejects unusable checkpoint attempts", () => {
+    const stage = createStage(6);
+    const completed = defaultPhraseStageProgress();
+    completed.completedMissionIds = missionIds(6, 20);
+    completed.completed = true;
+
+    expect(phraseReviewMissionForStage(stage, completed, "new-day")?.number).toBe(16);
+
+    const mixedEvidence = {
+      ...completed,
+      completedCheckpointIds: [phraseMissionId(6, 15), phraseMissionId(6, 16)],
+      checkpointSessionIds: {
+        [phraseMissionId(6, 15)]: "same-day",
+        [phraseMissionId(6, 16)]: "same-day",
+      },
+    };
+    expect(phraseReviewMissionForStage(stage, mixedEvidence, "new-day")?.number).toBe(18);
+
+    const exhausted = {
+      ...completed,
+      completedCheckpointIds: missionIds(6, 20).slice(15),
+      checkpointSessionIds: Object.fromEntries(
+        missionIds(6, 20).slice(15).map((missionId) => [missionId, "same-day"]),
+      ),
+    };
+    expect(phraseReviewMissionForStage(stage, exhausted, "new-day")).toBeNull();
+
+    const invalidAttempt = {
+      ...completed,
+      checkpointAttempt: {
+        missionId: "not-a-stage-mission",
+        sessionId: "new-day",
+        itemIds: [],
+        hadError: false,
+        usedHelp: false,
+      },
+    };
+    expect(phraseReviewMissionForStage(stage, invalidAttempt, "new-day")).toBeNull();
+    invalidAttempt.checkpointAttempt.missionId = phraseMissionId(6, 98);
+    expect(phraseReviewMissionForStage(stage, invalidAttempt, "new-day")).toBeNull();
+
+    const replay = {
+      ...completed,
+      currentRoundIndex: 2,
+      checkpointAttempt: {
+        missionId: phraseMissionId(6, 19),
+        sessionId: "replay-day",
+        itemIds: stage.checkpointPhrases.slice(12, 14).map((item) => item.id),
+        hadError: false,
+        usedHelp: false,
+      },
+    };
+    const replayResult = advancePhraseRound(
+      stage,
+      replay,
+      stage.checkpointPhrases[14].id,
+      "replay-day",
+    );
+    expect(replayResult.stageState.completedMissionIds).toHaveLength(20);
+  });
+
   test("sanitizes a phrase stage independently", () => {
     const stage = createStage(6);
 

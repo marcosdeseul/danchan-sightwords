@@ -60,6 +60,13 @@ export function phraseReadingDayId(date = new Date()): string {
   return `phrase-reading-day-${year}-${month}-${day}`;
 }
 
+export function readingDayControl(
+  enabled: boolean,
+  onStart: () => void,
+): (() => void) | undefined {
+  return enabled ? onStart : undefined;
+}
+
 export { initialState, reducer };
 export {
   buildWordCheckCandidateIndices,
@@ -508,6 +515,10 @@ export default function App() {
   const readingDay = new Date();
   readingDay.setDate(readingDay.getDate() + readingDayOffset);
   const phraseReadingSessionId = phraseReadingDayId(readingDay);
+  const startNextReadingDay = readingDayControl(
+    import.meta.env.DEV,
+    () => setReadingDayOffset((offset) => offset + 1),
+  );
 
   const switchWorld = (world: "words" | "phrases") => {
     clearAutoAdvance();
@@ -574,9 +585,7 @@ export default function App() {
             speechNotice={state.speechNotice}
             commitProgress={commitProgress}
             speakText={speakWord}
-            onStartNextReadingDay={import.meta.env.DEV
-              ? () => setReadingDayOffset((offset) => offset + 1)
-              : undefined}
+            onStartNextReadingDay={startNextReadingDay}
           />
         ) : (
           <>

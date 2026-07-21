@@ -201,6 +201,46 @@ describe("Phrase Forest learning controls", () => {
     expect(screen.getByText(/then continue your current adventure/)).toBeInTheDocument();
   });
 
+  test("shows the next-reading-day simulator only after an area is complete", () => {
+    const forest = createForest();
+    const progress = createProgress(forest);
+    const startNextReadingDay = vi.fn();
+    const props = {
+      content: forest,
+      progress,
+      sessionId: "reading-day-3",
+      speechNotice: "",
+      speakText: () => true,
+      commitProgress: (next: ProgressState) => next,
+      onStartNextReadingDay: startNextReadingDay,
+    };
+    const { rerender } = render(<PhraseForestWorld {...props} />);
+
+    expect(screen.queryByRole("button", { name: "Test next reading day" }))
+      .not.toBeInTheDocument();
+
+    progress.phraseForest.completedStageIds = [6];
+    progress.phraseForest.unlockedStageIds = [6, 7];
+    progress.phraseForest.stages["6"] = {
+      ...defaultPhraseStageProgress(),
+      completedMissionIds: missionIds(6, 20),
+      completedCheckpointIds: missionIds(6, 18).slice(15),
+      checkpointSessionIds: {
+        [phraseMissionId(6, 15)]: "reading-day-1",
+        [phraseMissionId(6, 16)]: "reading-day-2",
+        [phraseMissionId(6, 17)]: "reading-day-3",
+      },
+      completed: true,
+      mastered: true,
+      restoredArea: true,
+      companionUnlocked: true,
+    };
+    rerender(<PhraseForestWorld {...props} progress={{ ...progress }} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Test next reading day" }));
+    expect(startNextReadingDay).toHaveBeenCalledOnce();
+  });
+
   test("offers whole-phrase and individual-word audio help", () => {
     const item = createStage(6).practicePhrases[0];
     const playPhrase = vi.fn();
