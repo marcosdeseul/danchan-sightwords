@@ -90,7 +90,11 @@ export function useStageFlow({
     }
 
     if (!hasNextStage(content, stage)) {
-      showCelebration("All stages complete!");
+      showCelebration(
+        content.phraseForest
+          ? "Phrase Forest unlocked!"
+          : "All stages complete!",
+      );
     }
   }, [openFieldTrip, showCelebration]);
 

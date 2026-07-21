@@ -5,6 +5,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 const { PUBLIC_CONTENT, REWARD_ID_ALIASES, stageById } = require("../server/content");
+const { createPhraseForest } = require("../server/phrase-content");
 const {
   createDefaultProgress,
   mergeProgress,
@@ -13,7 +14,7 @@ const {
 } = require("../server/progress");
 
 test("staged content has the expected word counts", () => {
-  assert.equal(PUBLIC_CONTENT.version, 6);
+  assert.equal(PUBLIC_CONTENT.version, 7);
   assert.equal(PUBLIC_CONTENT.stages[0].words.length, 100);
   assert.equal(PUBLIC_CONTENT.stages[1].words.length, 150);
   assert.equal(PUBLIC_CONTENT.stages[2].words.length, 200);
@@ -111,6 +112,269 @@ test("default progress starts at stage 1 only", () => {
   assert.equal(progress.stages["3"].deckOrder.length, 200);
   assert.equal(progress.stages["4"].deckOrder.length, 250);
   assert.equal(progress.stages["5"].deckOrder.length, 300);
+  assert.equal(progress.phraseForest.activeStageId, 6);
+  assert.deepEqual(progress.phraseForest.unlockedStageIds, []);
+  assert.deepEqual(progress.phraseForest.completedStageIds, []);
+  assert.equal(Object.keys(progress.phraseForest.stages).length, 5);
+});
+
+test("Phrase Forest defines five detailed stages using only the 1,000 known words", () => {
+  const forest = PUBLIC_CONTENT.phraseForest;
+  const allowedWords = new Set(PUBLIC_CONTENT.stages.flatMap((stage) => stage.words));
+  const phraseIds = [];
+
+  assert.equal(forest.title, "Phrase Forest");
+  assert.deepEqual(forest.stages.map((stage) => stage.id), [6, 7, 8, 9, 10]);
+  assert.deepEqual(
+    forest.stages.map((stage) => stage.companion.name),
+    ["Fox", "Butterfly", "Rabbit", "Beaver", "Owl"],
+  );
+
+  forest.stages.forEach((stage) => {
+    assert.equal(stage.missionCount, 20);
+    assert.deepEqual(stage.chapters.map((chapter) => chapter.title), [
+      "Discover",
+      "Practice",
+      "Apply",
+      "Prove",
+    ]);
+    assert.equal(stage.practicePhrases.length, 60);
+    assert.equal(stage.checkpointPhrases.length, 15);
+
+    [...stage.practicePhrases, ...stage.checkpointPhrases].forEach((item) => {
+      assert.equal(item.text, item.tokens.join(" "));
+      assert.equal(item.tokens.every((word) => allowedWords.has(word)), true);
+      assert.equal(typeof item.accessibilityText, "string");
+      assert.equal(item.accessibilityText.length > item.text.length, true);
+      phraseIds.push(item.id);
+    });
+  });
+
+  assert.equal(new Set(phraseIds).size, 375);
+});
+
+test("Phrase Forest content generation rejects words outside its approved foundation", () => {
+  assert.throws(
+    () => createPhraseForest([]),
+    /outside the 1,000-word foundation/,
+  );
+});
+
+test("Phrase Forest stays locked until all Word Academy words are known", () => {
+  const progress = createDefaultProgress();
+
+  PUBLIC_CONTENT.stages.slice(0, -1).forEach((stage) => {
+    progress.stages[String(stage.id)].knownWords = [...stage.words];
+  });
+  progress.phraseForest = {
+    activeStageId: 10,
+    unlockedStageIds: [6, 7, 8, 9, 10],
+    completedStageIds: [6],
+    stages: "invalid",
+  };
+
+  const clean = sanitizeProgress(progress);
+
+  assert.deepEqual(clean.phraseForest.unlockedStageIds, []);
+  assert.deepEqual(clean.phraseForest.completedStageIds, []);
+  assert.equal(clean.phraseForest.activeStageId, 6);
+  assert.equal(clean.phraseForest.stages["6"].completed, false);
+});
+
+test("Phrase Forest sanitizes mission order, support evidence, and checkpoint rounds", () => {
+  const progress = completedWordAcademyProgress();
+  const stage = PUBLIC_CONTENT.phraseForest.stages[0];
+  const helpedItem = stage.practicePhrases[0].id;
+  const independentItem = stage.practicePhrases[1].id;
+
+  progress.phraseForest = {
+    activeStageId: 99,
+    stages: {
+      6: {
+        currentRoundIndex: 99,
+        completedMissionIds: [
+          "phrase-stage-6-mission-1",
+          "phrase-stage-6-mission-3",
+          42,
+        ],
+        completedCheckpointIds: ["made-up"],
+        helpedItemIds: [helpedItem, helpedItem, "made-up", 42],
+        independentItemIds: [helpedItem, independentItem, "made-up"],
+        itemResults: {
+          [helpedItem]: {
+            correct: 1000,
+            errors: -2,
+            phraseHelp: 3,
+            wordHelp: "not-a-number",
+          },
+          [independentItem]: null,
+          "made-up": { correct: 5 },
+        },
+      },
+      7: "invalid",
+      8: { itemResults: "invalid" },
+      9: {
+        itemResults: {
+          [PUBLIC_CONTENT.phraseForest.stages[3].practicePhrases[0].id]: "invalid",
+        },
+      },
+    },
+  };
+
+  const clean = sanitizeProgress(progress);
+  const cleanStage = clean.phraseForest.stages["6"];
+
+  assert.deepEqual(clean.phraseForest.unlockedStageIds, [6]);
+  assert.equal(clean.phraseForest.activeStageId, 6);
+  assert.deepEqual(cleanStage.completedMissionIds, ["phrase-stage-6-mission-1"]);
+  assert.equal(cleanStage.currentRoundIndex, 3);
+  assert.deepEqual(cleanStage.completedCheckpointIds, []);
+  assert.deepEqual(cleanStage.helpedItemIds, [helpedItem]);
+  assert.deepEqual(cleanStage.independentItemIds, [independentItem]);
+  assert.deepEqual(cleanStage.itemResults[helpedItem], {
+    correct: 999,
+    errors: 0,
+    phraseHelp: 3,
+    wordHelp: 0,
+  });
+  assert.equal(cleanStage.itemResults[independentItem], undefined);
+  assert.equal(cleanStage.completed, false);
+  assert.equal(cleanStage.restoredArea, false);
+  assert.equal(cleanStage.companionUnlocked, false);
+});
+
+test("finishing all 20 missions restores an area and unlocks the next phrase stage", () => {
+  const progress = completedWordAcademyProgress();
+  progress.phraseForest = {
+    activeStageId: 7,
+    stages: {
+      6: {
+        currentRoundIndex: 2,
+        completedMissionIds: phraseMissionIds(6, 20),
+        completedCheckpointIds: phraseMissionIds(6, 18).slice(15),
+        checkpointSessionIds: {
+          "phrase-stage-6-mission-16": "session-1",
+          "phrase-stage-6-mission-17": "session-2",
+          "phrase-stage-6-mission-18": "session-3",
+        },
+      },
+      7: {
+        currentRoundIndex: 99,
+        completedMissionIds: phraseMissionIds(7, 15),
+      },
+    },
+  };
+
+  const clean = sanitizeProgress(progress);
+
+  assert.deepEqual(clean.phraseForest.unlockedStageIds, [6, 7]);
+  assert.deepEqual(clean.phraseForest.completedStageIds, [6]);
+  assert.equal(clean.phraseForest.activeStageId, 7);
+  assert.deepEqual(
+    clean.phraseForest.stages["6"].completedCheckpointIds,
+    phraseMissionIds(6, 18).slice(15),
+  );
+  assert.deepEqual(clean.phraseForest.stages["6"].checkpointSessionIds, {
+    "phrase-stage-6-mission-16": "session-1",
+    "phrase-stage-6-mission-17": "session-2",
+    "phrase-stage-6-mission-18": "session-3",
+  });
+  assert.equal(clean.phraseForest.stages["6"].currentRoundIndex, 0);
+  assert.equal(clean.phraseForest.stages["6"].completed, true);
+  assert.equal(clean.phraseForest.stages["6"].restoredArea, true);
+  assert.equal(clean.phraseForest.stages["6"].companionUnlocked, true);
+  assert.equal(clean.phraseForest.stages["7"].currentRoundIndex, 2);
+});
+
+test("Phrase Forest sanitizes session evidence and preserves legacy completed stages", () => {
+  const progress = completedWordAcademyProgress();
+  const stage = PUBLIC_CONTENT.phraseForest.stages[0];
+  const mission16 = "phrase-stage-6-mission-16";
+  const mission17 = "phrase-stage-6-mission-17";
+  progress.phraseForest = {
+    activeStageId: 6,
+    stages: {
+      6: {
+        completedMissionIds: phraseMissionIds(6, 18),
+        completedCheckpointIds: [mission16, mission17, "phrase-stage-6-mission-18"],
+        checkpointSessionIds: {
+          [mission16]: "same-session",
+          [mission17]: "same-session",
+          "phrase-stage-6-mission-18": "",
+          madeUp: "other-session",
+        },
+        checkpointAttemptSessionIds: [" current-session ", 42, "", "current-session"],
+        checkpointAttempt: {
+          missionId: mission17,
+          sessionId: " current-session ",
+          itemIds: [stage.checkpointPhrases[3].id, "made-up"],
+          hadError: true,
+          usedHelp: true,
+        },
+      },
+      7: {
+        checkpointAttempt: { missionId: "phrase-stage-7-mission-16", sessionId: 7 },
+      },
+      8: {
+        checkpointAttempt: { missionId: 42, sessionId: "session-8" },
+      },
+    },
+  };
+
+  const clean = sanitizeProgress(progress);
+  assert.deepEqual(clean.phraseForest.stages["6"].completedCheckpointIds, [mission16]);
+  assert.deepEqual(clean.phraseForest.stages["6"].checkpointSessionIds, {
+    [mission16]: "same-session",
+  });
+  assert.deepEqual(clean.phraseForest.stages["6"].checkpointAttemptSessionIds, [
+    "current-session",
+  ]);
+  assert.deepEqual(clean.phraseForest.stages["6"].checkpointAttempt, {
+    missionId: mission17,
+    sessionId: "current-session",
+    itemIds: [stage.checkpointPhrases[3].id],
+    hadError: true,
+    usedHelp: true,
+  });
+  assert.equal(clean.phraseForest.stages["7"].checkpointAttempt, null);
+  assert.equal(clean.phraseForest.stages["8"].checkpointAttempt, null);
+
+  const legacy = completedWordAcademyProgress();
+  legacy.phraseForest = {
+    activeStageId: 6,
+    stages: {
+      6: {
+        completedMissionIds: phraseMissionIds(6, 20),
+        completedCheckpointIds: phraseMissionIds(6, 20).slice(15),
+        completed: true,
+      },
+    },
+  };
+  const migrated = sanitizeProgress(legacy).phraseForest.stages["6"];
+  assert.equal(migrated.completed, true);
+  assert.deepEqual(migrated.completedCheckpointIds, phraseMissionIds(6, 18).slice(15));
+  assert.equal(new Set(Object.values(migrated.checkpointSessionIds)).size, 3);
+
+  const meaningOnly = completedWordAcademyProgress();
+  meaningOnly.phraseForest = {
+    activeStageId: 6,
+    stages: {
+      6: {
+        completedMissionIds: phraseMissionIds(6, 20),
+        completedCheckpointIds: [
+          "phrase-stage-6-mission-17",
+          "phrase-stage-6-mission-19",
+          "phrase-stage-6-mission-20",
+        ],
+        checkpointSessionIds: {
+          "phrase-stage-6-mission-17": "meaning-1",
+          "phrase-stage-6-mission-19": "meaning-2",
+          "phrase-stage-6-mission-20": "meaning-3",
+        },
+      },
+    },
+  };
+  assert.equal(sanitizeProgress(meaningOnly).phraseForest.stages["6"].completed, false);
 });
 
 test("version 5 progress gains a fresh stage 5 without losing earlier progress", () => {
@@ -501,6 +765,72 @@ test("merge removes newly known practice words and sorts completed trips", () =>
   assert.equal(merged.activeStageId, 3);
 });
 
+test("merge preserves the furthest Phrase Forest mission and strongest reading evidence", () => {
+  const existing = completedWordAcademyProgress();
+  const incoming = completedWordAcademyProgress();
+  const stage = PUBLIC_CONTENT.phraseForest.stages[0];
+  const firstItem = stage.practicePhrases[0].id;
+  const secondItem = stage.practicePhrases[1].id;
+  const thirdItem = stage.practicePhrases[2].id;
+
+  existing.phraseForest = {
+    activeStageId: 6,
+    stages: {
+      6: {
+        currentRoundIndex: 2,
+        completedMissionIds: phraseMissionIds(6, 2),
+        helpedItemIds: [firstItem],
+        independentItemIds: [secondItem],
+        itemResults: {
+          [firstItem]: { correct: 2, errors: 1, phraseHelp: 1, wordHelp: 0 },
+          [thirdItem]: { correct: 1, errors: 0, phraseHelp: 0, wordHelp: 0 },
+        },
+      },
+    },
+  };
+  incoming.phraseForest = {
+    activeStageId: 6,
+    stages: {
+      6: {
+        currentRoundIndex: 1,
+        completedMissionIds: phraseMissionIds(6, 1),
+        helpedItemIds: [secondItem],
+        independentItemIds: [firstItem],
+        itemResults: {
+          [firstItem]: { correct: 1, errors: 4, phraseHelp: 0, wordHelp: 2 },
+          [secondItem]: { correct: 3, errors: 0, phraseHelp: 1, wordHelp: 0 },
+        },
+      },
+    },
+  };
+
+  const merged = mergeProgress(existing, incoming);
+  const mergedStage = merged.phraseForest.stages["6"];
+
+  assert.deepEqual(mergedStage.completedMissionIds, phraseMissionIds(6, 2));
+  assert.equal(mergedStage.currentRoundIndex, 2);
+  assert.deepEqual(mergedStage.helpedItemIds, [firstItem, secondItem]);
+  assert.deepEqual(mergedStage.independentItemIds, []);
+  assert.deepEqual(mergedStage.itemResults[firstItem], {
+    correct: 2,
+    errors: 4,
+    phraseHelp: 1,
+    wordHelp: 2,
+  });
+  assert.deepEqual(mergedStage.itemResults[secondItem], {
+    correct: 3,
+    errors: 0,
+    phraseHelp: 1,
+    wordHelp: 0,
+  });
+  assert.deepEqual(mergedStage.itemResults[thirdItem], {
+    correct: 1,
+    errors: 0,
+    phraseHelp: 0,
+    wordHelp: 0,
+  });
+});
+
 test("legacy state imports into stage 1", () => {
   const progress = progressForLegacyState({
     knownWords: ["the", "of"],
@@ -539,4 +869,21 @@ function duplicatedValues(values) {
   });
 
   return [...duplicates].sort();
+}
+
+function completedWordAcademyProgress() {
+  const progress = createDefaultProgress();
+
+  PUBLIC_CONTENT.stages.forEach((stage) => {
+    progress.stages[String(stage.id)].knownWords = [...stage.words];
+  });
+
+  return progress;
+}
+
+function phraseMissionIds(stageId, count) {
+  return Array.from(
+    { length: count },
+    (_, index) => `phrase-stage-${stageId}-mission-${index + 1}`,
+  );
 }

@@ -6,6 +6,10 @@ import type {
   StageContent,
   StageProgress,
 } from "./types";
+import {
+  defaultPhraseForestProgress,
+  sanitizePhraseForestProgress,
+} from "./phraseForest";
 
 export const STORAGE_KEY = "danSightWords:v2";
 export const LEGACY_STORAGE_KEY = "danSightWords:v1";
@@ -57,6 +61,7 @@ export function defaultProgress(content: SightWordsContent): ProgressState {
     unlockedStageIds: [1],
     completedFieldTrips: [],
     stages,
+    phraseForest: defaultPhraseForestProgress(content.phraseForest),
   };
 }
 
@@ -210,6 +215,11 @@ export function sanitizeProgress(
   progress.activeStageId = progress.unlockedStageIds.includes(activeStageId)
     ? activeStageId
     : progress.unlockedStageIds[progress.unlockedStageIds.length - 1];
+  progress.phraseForest = sanitizePhraseForestProgress(
+    content.phraseForest,
+    source.phraseForest,
+    wordAcademyComplete(content, progress),
+  );
 
   return progress;
 }
@@ -307,6 +317,15 @@ export function totalKnownCount(
   return content.stages.reduce(
     (sum, stage) => sum + progress.stages[String(stage.id)].knownWords.length,
     0,
+  );
+}
+
+export function wordAcademyComplete(
+  content: SightWordsContent,
+  progress: ProgressState,
+): boolean {
+  return content.stages.every((stage) =>
+    isStageComplete(stage, progress.stages[String(stage.id)]),
   );
 }
 

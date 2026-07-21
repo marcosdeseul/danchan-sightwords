@@ -54,6 +54,7 @@ export interface AppState {
   fieldTrip: FieldTripState;
   loading: boolean;
   speaking: boolean;
+  activeWorld: "words" | "phrases";
 }
 
 export type AppAction =
@@ -64,6 +65,7 @@ export type AppAction =
   | { type: "setAuthMessage"; message: string }
   | { type: "setSpeechNotice"; message: string }
   | { type: "setSpeaking"; speaking: boolean }
+  | { type: "setActiveWorld"; world: "words" | "phrases" }
   | { type: "celebrate"; message: string }
   | { type: "clearLastAnswer" }
   | { type: "openMaze" }
@@ -105,6 +107,7 @@ export const initialState: AppState = {
   },
   loading: true,
   speaking: false,
+  activeWorld: "words",
 };
 
 export function reducer(state: AppState, action: AppAction): AppState {
@@ -118,13 +121,22 @@ export function reducer(state: AppState, action: AppAction): AppState {
         progress: action.progress || state.progress,
         authMessage: action.message,
         loading: false,
+        activeWorld: action.user ? state.activeWorld : "words",
       };
     case "setUser":
-      return { ...state, user: action.user, authMessage: action.message };
+      return {
+        ...state,
+        user: action.user,
+        authMessage: action.message,
+        activeWorld: action.user ? state.activeWorld : "words",
+      };
     case "setProgress":
       return {
         ...state,
         progress: action.progress,
+        activeWorld: action.progress.phraseForest.unlockedStageIds.length > 0
+          ? state.activeWorld
+          : "words",
         lastAnswerAction:
           action.lastAnswerAction === undefined
             ? state.lastAnswerAction
@@ -136,6 +148,8 @@ export function reducer(state: AppState, action: AppAction): AppState {
       return { ...state, speechNotice: action.message };
     case "setSpeaking":
       return { ...state, speaking: action.speaking };
+    case "setActiveWorld":
+      return { ...state, activeWorld: action.world };
     case "celebrate":
       return {
         ...state,

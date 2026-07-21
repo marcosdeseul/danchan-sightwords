@@ -12,7 +12,7 @@
     "build": "tsc --noEmit && vite build",
     "start": "node server/server.js",
     "migrate": "node server/migrate.js",
-    "check": "node --check server/server.js && node --check server/auth.js && node --check server/progress.js && node --check server/content.js && tsc --noEmit",
+    "check": "node --check server/server.js && node --check server/auth.js && node --check server/progress.js && node --check server/content.js && node --check server/phrase-content.js && tsc --noEmit",
     "test": "npm run test:backend && npm run test:frontend",
     "test:backend": "node --test test/*.test.js",
     "test:frontend": "vitest run",

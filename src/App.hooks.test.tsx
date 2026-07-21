@@ -63,6 +63,7 @@ function createState(content: SightWordsContent, overrides: Partial<AppState> = 
     },
     loading: false,
     speaking: false,
+    activeWorld: "words",
     ...overrides,
   };
 }

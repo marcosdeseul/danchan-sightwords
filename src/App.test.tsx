@@ -40,6 +40,8 @@ import type {
   WordCheckState,
 } from "./App";
 import type {
+  PhraseForestContent,
+  PhraseItemContent,
   ProgressState,
   RewardItem,
   RewardSlot,
@@ -83,6 +85,45 @@ function createStage(id: number, words = ["alpha", "apple", "beta", "cat"]): Sta
 
 function createContent(): SightWordsContent {
   return { version: 1, stages: [createStage(1), createStage(2, ["dog", "door", "eel", "fox"])] };
+}
+
+function createPhraseForestContent(): PhraseForestContent {
+  const items = Array.from({ length: 75 }, (_, index): PhraseItemContent => ({
+    id: `phrase-6-${index + 1}`,
+    text: index % 2 === 0 ? "my book" : "your book",
+    tokens: index % 2 === 0 ? ["my", "book"] : ["your", "book"],
+    contrastKey: "stage-6-book",
+    meaningSafe: true,
+    accessibilityText: index % 2 === 0 ? "A child holding a book" : "A book for you",
+    visual: { kind: "symbol", symbol: index % 2 === 0 ? "🧒 📘" : "👉 📘" },
+  }));
+
+  return {
+    title: "Phrase Forest",
+    subtitle: "Connect words. Restore the forest.",
+    stages: [{
+      id: 6,
+      title: "Stage 6",
+      subtitle: "Two-Word Groups",
+      areaName: "First Crossing",
+      companion: { id: "fox", name: "Fox", emoji: "🦊" },
+      restoration: "Forest Footbridge",
+      intro: "Pair familiar words to reconnect the first forest path.",
+      missionCount: 20,
+      chapters: [
+        { id: "discover", title: "Discover", missionStart: 1, missionEnd: 5 },
+        { id: "practice", title: "Practice", missionStart: 6, missionEnd: 10 },
+        { id: "apply", title: "Apply", missionStart: 11, missionEnd: 15 },
+        { id: "prove", title: "Prove", missionStart: 16, missionEnd: 20 },
+      ],
+      practicePhrases: items.slice(0, 60),
+      checkpointPhrases: items.slice(60),
+    }],
+  };
+}
+
+function createContentWithPhraseForest(): SightWordsContent {
+  return { ...createContentWithoutRewards(), phraseForest: createPhraseForestContent() };
 }
 
 function createContentWithoutRewards(): SightWordsContent {
@@ -305,15 +346,24 @@ describe("App reducer", () => {
     const progress = defaultProgress(content);
     const alternate = structuredClone(progress);
     alternate.activeStageId = 2;
+    alternate.phraseForest.unlockedStageIds = [6];
     let state = reducer(initialState, { type: "bootstrapped", content, progress });
 
     expect(state).toMatchObject({ content, progress, loading: false });
+    state = reducer(state, { type: "setActiveWorld", world: "phrases" });
+    expect(state.activeWorld).toBe("phrases");
     state = reducer(state, { type: "accountReady", user, message: "ready" });
     expect(state.progress).toBe(progress);
+    expect(state.activeWorld).toBe("phrases");
     state = reducer(state, { type: "accountReady", user: null, progress: alternate, message: "signed out" });
     expect(state.progress).toBe(alternate);
+    expect(state.activeWorld).toBe("words");
     state = reducer(state, { type: "setUser", user, message: "hello" });
+    state = reducer(state, { type: "setActiveWorld", world: "phrases" });
+    state = reducer(state, { type: "setProgress", progress: alternate });
+    expect(state.activeWorld).toBe("phrases");
     state = reducer(state, { type: "setProgress", progress });
+    expect(state.activeWorld).toBe("words");
     expect(state.lastAnswerAction).toBeNull();
     const lastAnswerAction = { stageId: 1, wordIndex: 0, previousState: progress };
     state = reducer(state, { type: "setProgress", progress: alternate, lastAnswerAction });
@@ -622,6 +672,40 @@ describe("App integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Sign up" }));
     await screen.findByText("dan");
     expect(signup).toBe(true);
+  });
+
+  test("unlocks Phrase Forest after Word Academy and switches safely between worlds", async () => {
+    const content = createContentWithPhraseForest();
+    const lockedProgress = defaultProgress(content);
+    const first = await renderLoggedInApp(content, lockedProgress);
+    const lockedButton = screen.getByRole("button", { name: /Phrase Forest/ });
+
+    expect(lockedButton).toBeDisabled();
+    expect(lockedButton).toHaveTextContent("Complete 1,000 words");
+    lockedButton.removeAttribute("disabled");
+    fireEvent.click(lockedButton);
+    expect(screen.getByLabelText("Current word: alpha")).toBeInTheDocument();
+    first.unmount();
+
+    const completeProgress = defaultProgress(content);
+    content.stages.forEach((stage) => {
+      completeProgress.stages[String(stage.id)].knownWords = [...stage.words];
+    });
+    await renderLoggedInApp(content, completeProgress);
+
+    const phraseButton = screen.getByRole("button", { name: /Phrase Forest/ });
+    expect(phraseButton).toBeEnabled();
+    expect(phraseButton).toHaveTextContent("Stages 6-10");
+    fireEvent.click(phraseButton);
+
+    await screen.findByRole("heading", { name: "Choose the bridge supply" });
+    expect(screen.getByRole("heading", { name: "Stage 6" })).toBeInTheDocument();
+    expect(screen.getAllByText("First Crossing")).toHaveLength(2);
+    expect(document.body).toHaveClass("phrase-forest");
+
+    fireEvent.click(screen.getByRole("button", { name: /Word Academy/ }));
+    await screen.findByLabelText("Current word: alpha");
+    expect(document.body).toHaveClass("stage-ancient");
   });
 
   test("handles speech fallbacks and callbacks, word actions, undo, navigation, shuffle, and stage selection", async () => {
@@ -1082,6 +1166,24 @@ describe("App integration", () => {
     await renderLoggedInApp(noRewards, finalProgress);
     fireEvent.click(screen.getByRole("button", { name: "I know it" }));
     await screen.findByText("All stages complete!");
+  });
+
+  test("announces Phrase Forest when the final Word Academy word is completed", async () => {
+    const content = createContentWithPhraseForest();
+    const progress = defaultProgress(content);
+    vi.spyOn(Math, "random").mockReturnValue(0.9);
+
+    progress.stages["1"].knownWords = [...content.stages[0].words];
+    progress.stages["1"].fieldTripCompleted = true;
+    progress.activeStageId = 2;
+    progress.stages["2"].knownWords = content.stages[1].words.slice(0, -1);
+    progress.stages["2"].currentIndex = content.stages[1].words.length - 1;
+
+    await renderLoggedInApp(content, progress);
+    fireEvent.click(screen.getByRole("button", { name: "I know it" }));
+
+    await screen.findByText("Phrase Forest unlocked!");
+    expect(screen.getByRole("button", { name: /Phrase Forest/ })).toBeEnabled();
   });
 
   test("cleans up active quiz and defense timers on logout and unmount", async () => {
