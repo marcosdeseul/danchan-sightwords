@@ -371,6 +371,66 @@ describe("Phrase Forest world", () => {
     expect(screen.getByRole("heading", { name: "Choose the bridge supply" })).toBeInTheDocument();
   });
 
+  test("automatically models every guided Stage 6 phrase but keeps checkpoints silent", () => {
+    const forest = createForest();
+    const speakText = vi.fn(() => true);
+    const practiceProgress = createProgress(forest);
+    practiceProgress.phraseForest.stages["6"].completedMissionIds = missionIds(6, 5);
+
+    const { rerender } = render(
+      <PhraseForestWorld
+        content={forest}
+        progress={practiceProgress}
+        sessionId="guided-session"
+        speechNotice=""
+        speakText={speakText}
+        commitProgress={(next) => next}
+      />,
+    );
+
+    expect(speakText).toHaveBeenCalledTimes(1);
+    expect(speakText).toHaveBeenLastCalledWith(
+      forest.stages[0].practicePhrases[20].text,
+      { clearAutoAdvance: false },
+    );
+
+    const nextPhraseProgress = createProgress(forest);
+    nextPhraseProgress.phraseForest.stages["6"].completedMissionIds = missionIds(6, 5);
+    nextPhraseProgress.phraseForest.stages["6"].currentRoundIndex = 1;
+    rerender(
+      <PhraseForestWorld
+        content={forest}
+        progress={nextPhraseProgress}
+        sessionId="guided-session"
+        speechNotice=""
+        speakText={speakText}
+        commitProgress={(next) => next}
+      />,
+    );
+
+    expect(speakText).toHaveBeenCalledTimes(2);
+    expect(speakText).toHaveBeenLastCalledWith(
+      forest.stages[0].practicePhrases[21].text,
+      { clearAutoAdvance: false },
+    );
+
+    const checkpointProgress = createProgress(forest);
+    checkpointProgress.phraseForest.stages["6"].completedMissionIds = missionIds(6, 15);
+    rerender(
+      <PhraseForestWorld
+        content={forest}
+        progress={checkpointProgress}
+        sessionId="checkpoint-session"
+        speechNotice=""
+        speakText={speakText}
+        commitProgress={(next) => next}
+      />,
+    );
+
+    expect(screen.getByText("Fresh checkpoint")).toBeInTheDocument();
+    expect(speakText).toHaveBeenCalledTimes(2);
+  });
+
   test("paces fresh checkpoints across separate reading sessions", () => {
     const forest = createForest();
     const progress = createProgress(forest);

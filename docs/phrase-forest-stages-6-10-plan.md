@@ -127,6 +127,10 @@ The phrase appears beside a scene. In Discover missions, the app reads the whole
 phrase and highlights it as one unit. It does not bounce through words in a way
 that encourages isolated reading.
 
+Stage 6 is the onboarding exception: every guided phrase in Discover, Practice,
+and Apply is read aloud as soon as it appears. Fresh Prove checkpoints remain
+silent so that independent mastery evidence stays valid.
+
 ### Meaning match
 
 The child reads a phrase and chooses between visually controlled alternatives.

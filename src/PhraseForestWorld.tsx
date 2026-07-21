@@ -68,8 +68,12 @@ export function PhraseForestWorld({
   }, [activeStage.id]);
 
   useEffect(() => {
+    const shouldAutoModel = !mission.checkpoint && (
+      activeStage.id === 6 || mission.chapterId === "discover"
+    );
+
     if (
-      mission.chapterId === "discover" &&
+      shouldAutoModel &&
       !checkpointBlocked &&
       !successMoment &&
       lastModeledItemId.current !== item.id
@@ -77,7 +81,15 @@ export function PhraseForestWorld({
       lastModeledItemId.current = item.id;
       speakText(item.text, { clearAutoAdvance: false });
     }
-  }, [checkpointBlocked, item.id, mission.chapterId, successMoment, speakText]);
+  }, [
+    activeStage.id,
+    checkpointBlocked,
+    item.id,
+    mission.chapterId,
+    mission.checkpoint,
+    successMoment,
+    speakText,
+  ]);
 
   const choices = useMemo(
     () => meaningChoicesForItem(activeStage, item),
