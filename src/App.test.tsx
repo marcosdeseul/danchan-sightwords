@@ -810,6 +810,22 @@ describe("App integration", () => {
     expect(speech.speechSynthesis.cancel).toHaveBeenCalledOnce();
   });
 
+  test("clears a pending speech replay timer when the app unmounts", async () => {
+    const content = createContentWithoutRewards();
+    const view = await renderLoggedInApp(content, defaultProgress(content));
+    const speech = installSpeech();
+    speech.speechSynthesis.pending = true;
+    vi.useFakeTimers();
+    const clearTimeoutSpy = vi.spyOn(window, "clearTimeout");
+
+    fireEvent.click(screen.getByRole("button", { name: "Play word" }));
+    expect(speech.speechSynthesis.cancel).toHaveBeenCalledOnce();
+    expect(speech.speechSynthesis.speak).not.toHaveBeenCalled();
+
+    view.unmount();
+    expect(clearTimeoutSpy).toHaveBeenCalledOnce();
+  });
+
   test("selects an unlocked stage and applies its theme", async () => {
     const content = createContentWithoutRewards();
     const progress = defaultProgress(content);
