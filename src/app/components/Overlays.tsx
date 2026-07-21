@@ -14,16 +14,40 @@ import { FIELD_TRIP_ATTACK_TELEGRAPH_MS } from "../fieldTrip";
 import type { TripCreature } from "../fieldTrip";
 import type { FieldTripState, MazeState } from "../state";
 import type { WordCheckFeedback, WordCheckState } from "../wordCheck";
+import { useFittedWordFontSize } from "./Word";
+
+const MAX_WORD_CHECK_CHOICE_FONT_SIZE = 36;
+const MIN_WORD_CHECK_CHOICE_FONT_SIZE = 18;
+
+function WordCheckChoiceLabel({ choice }: { choice: string }) {
+  const [labelRef, fontSize] = useFittedWordFontSize<HTMLSpanElement>(
+    choice,
+    MAX_WORD_CHECK_CHOICE_FONT_SIZE,
+    MIN_WORD_CHECK_CHOICE_FONT_SIZE,
+  );
+
+  return (
+    <span
+      ref={labelRef}
+      className="word-check-choice-label"
+      style={{ "--word-check-choice-font-size": `${fontSize}px` } as CSSProperties}
+    >
+      {choice}
+    </span>
+  );
+}
 
 export function WordCheckOverlay({
   check,
   feedback,
+  speechNotice,
   onPlay,
   onPlayChoice,
   onChoose,
 }: {
   check: WordCheckState | null;
   feedback: WordCheckFeedback | null;
+  speechNotice?: string;
   onPlay: () => void;
   onPlayChoice: (choice: string) => void;
   onChoose: (choice: string) => void;
@@ -59,6 +83,11 @@ export function WordCheckOverlay({
           <Icon name="speaker" />
           <span>Play sound again</span>
         </button>
+        {speechNotice && (
+          <p className="notice word-check-speech-notice" role="status">
+            {speechNotice}
+          </p>
+        )}
         <div className="word-check-choices" aria-label="Word choices">
           {check.choices.map((choice) => {
             const isSelected = feedback?.choice === choice;
@@ -83,7 +112,7 @@ export function WordCheckOverlay({
                   onClick={() => onChoose(choice)}
                   disabled={hasFeedback}
                 >
-                  <span className="word-check-choice-label">{choice}</span>
+                  <WordCheckChoiceLabel choice={choice} />
                   {(isCorrectChoice || isWrongSelection) && (
                     <span className="word-check-mark" aria-hidden="true">
                       {isCorrectChoice ? "O" : "X"}

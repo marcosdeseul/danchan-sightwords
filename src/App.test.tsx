@@ -47,6 +47,7 @@ import type {
   StageContent,
   User,
 } from "./types";
+import { SPEECH_REPLAY_DELAY_MS, SPEECH_START_TIMEOUT_MS } from "./app/speech";
 
 vi.mock("./api", () => ({ api: vi.fn() }));
 
@@ -142,6 +143,7 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  Reflect.deleteProperty(window, "speechSynthesis");
   vi.useRealTimers();
 });
 
@@ -192,22 +194,43 @@ beforeEach(() => {
   vi.spyOn(window, "confirm").mockReturnValue(true);
 });
 
-function installSpeech() {
+function createVoice(
+  overrides: Partial<SpeechSynthesisVoice> = {},
+): SpeechSynthesisVoice {
+  return {
+    default: true,
+    lang: "en-US",
+    localService: true,
+    name: "Android English",
+    voiceURI: "android-en-us",
+    ...overrides,
+  };
+}
+
+function installSpeech(voices: SpeechSynthesisVoice[] = []) {
   const utterances: FakeUtterance[] = [];
   class FakeUtterance {
     lang = "";
     rate = 0;
     pitch = 0;
     volume = 0;
+    voice: SpeechSynthesisVoice | null = null;
     onstart: (() => void) | null = null;
     onend: (() => void) | null = null;
-    onerror: (() => void) | null = null;
+    onerror: ((event?: { error?: string }) => void) | null = null;
 
     constructor(public text: string) {
       utterances.push(this);
     }
   }
   const speechSynthesis = {
+    speaking: false,
+    pending: false,
+    paused: false,
+    getVoices: vi.fn(() => voices),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    resume: vi.fn(),
     cancel: vi.fn(),
     speak: vi.fn(),
   };
@@ -543,6 +566,7 @@ describe("App pure helpers", () => {
     expect(fittedWordFontSize("word", 50)).toBe(168);
     context.measureText.mockReturnValue({ width: 10_000 });
     expect(fittedWordFontSize("word", 121)).toBe(38);
+    expect(fittedWordFontSize("word", 500, 36, 18)).toBe(18);
     expect(getContext).toHaveBeenCalled();
   });
 });
@@ -609,18 +633,36 @@ describe("App integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Play word" }));
     expect(screen.getByText("Speech is not available in this browser.")).toBeInTheDocument();
 
-    const speech = installSpeech();
+    const androidVoice = createVoice();
+    const speech = installSpeech([androidVoice]);
     fireEvent.click(screen.getByRole("button", { name: "Play word" }));
     const utterance = speech.utterances.at(-1)!;
-    expect(utterance).toMatchObject({ text: "alpha", lang: "en-US", rate: 0.76, pitch: 1, volume: 1 });
+    expect(utterance).toMatchObject({
+      text: "alpha",
+      lang: "en-US",
+      rate: 0.76,
+      pitch: 1,
+      volume: 1,
+      voice: androidVoice,
+    });
+    expect(speech.speechSynthesis.cancel).not.toHaveBeenCalled();
+    expect(speech.speechSynthesis.resume).toHaveBeenCalledOnce();
+    speech.speechSynthesis.pending = true;
     fireEvent.click(screen.getByRole("button", { name: "Play word" }));
     expect(speech.speechSynthesis.cancel).toHaveBeenCalled();
     act(() => utterance.onstart?.());
-    expect(document.body).toHaveClass("is-speaking");
     act(() => utterance.onend?.());
-    expect(document.body).not.toHaveClass("is-speaking");
     act(() => utterance.onerror?.());
-    expect(screen.getByText("Speech could not play. Try again.")).toBeInTheDocument();
+    await waitFor(() => expect(speech.speechSynthesis.speak).toHaveBeenCalledTimes(2), {
+      timeout: SPEECH_REPLAY_DELAY_MS + 500,
+    });
+    const replayedUtterance = speech.utterances.at(-1)!;
+    act(() => replayedUtterance.onstart?.());
+    expect(document.body).toHaveClass("is-speaking");
+    act(() => replayedUtterance.onend?.());
+    expect(document.body).not.toHaveClass("is-speaking");
+    act(() => replayedUtterance.onerror?.({ error: "network" }));
+    expect(screen.getByText("This speech voice needs an internet connection. Check the connection and try again.")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Practice again" }));
     await screen.findByText("Practice", { selector: ".word-state" });
@@ -632,6 +674,20 @@ describe("App integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Next word" }));
     fireEvent.click(screen.getByRole("button", { name: "Shuffle words" }));
 
+  });
+
+  test("reports a silent device speech engine instead of leaving Android users without feedback", async () => {
+    const content = createContentWithoutRewards();
+    await renderLoggedInApp(content, defaultProgress(content));
+    const speech = installSpeech();
+    vi.useFakeTimers();
+
+    fireEvent.click(screen.getByRole("button", { name: "Play word" }));
+    expect(speech.speechSynthesis.speak).toHaveBeenCalledOnce();
+    act(() => vi.advanceTimersByTime(SPEECH_START_TIMEOUT_MS));
+
+    expect(screen.getByText(/No sound started.*enable text-to-speech/i)).toBeInTheDocument();
+    expect(speech.speechSynthesis.cancel).toHaveBeenCalledOnce();
   });
 
   test("selects an unlocked stage and applies its theme", async () => {
@@ -740,6 +796,27 @@ describe("App integration", () => {
     fireEvent(window, new Event("online"));
     await screen.findByText("Back online. Progress synced.");
     expect(putCount).toBe(2);
+  });
+
+  test("reports storage failures after a failed online save", async () => {
+    const content = createContentWithoutRewards();
+    const progress = defaultProgress(content);
+    apiMock.mockImplementation(async (path, options = {}) => {
+      if (path === "/api/content") return content;
+      if (path === "/api/me") return { user };
+      if (path === "/api/progress" && !options.method) return { progress };
+      if (path === "/api/progress") throw new Error("server down");
+      throw new Error(`Unexpected API request: ${path}`);
+    });
+    render(<App />);
+    await screen.findByText("dan");
+    vi.spyOn(window.localStorage, "setItem").mockImplementation(() => {
+      throw new Error("storage blocked");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Practice again" }));
+
+    await screen.findByText("Server unavailable. Keep this page open so progress can retry.");
   });
 
   test("claims a pending maze reward exactly once, reveals it, continues, and manages inventory", async () => {
@@ -930,7 +1007,7 @@ describe("App integration", () => {
     fireEvent.change(screen.getByLabelText("Username"), { target: { value: "dan" } });
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "pass" } });
     fireEvent.click(screen.getByRole("button", { name: "Log in" }));
-    await screen.findByText("Back online. Progress synced.");
+    await screen.findByText("Back online. Progress synced.", {}, { timeout: 3_000 });
     first.unmount();
 
     window.localStorage.setItem(
@@ -1015,7 +1092,7 @@ describe("App integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "I know it" }));
     fireEvent.click(screen.getByRole("button", { name: "beta" }));
     fireEvent.click(screen.getByRole("button", { name: "Log out" }));
-    act(() => vi.runAllTimers());
+    act(() => vi.runOnlyPendingTimers());
     vi.useRealTimers();
     first.unmount();
 
@@ -1313,6 +1390,14 @@ describe("presentational components", () => {
     const onPlayChoice = vi.fn();
     const onChoose = vi.fn();
     const check = createCheck();
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+      configurable: true,
+      get: () => 240,
+    });
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+      font: "",
+      measureText: () => ({ width: 1_000 }),
+    } as unknown as CanvasRenderingContext2D);
     const { rerender } = render(
       <WordCheckOverlay check={null} feedback={null} onPlay={onPlay} onPlayChoice={onPlayChoice} onChoose={onChoose} />,
     );
@@ -1324,6 +1409,32 @@ describe("presentational components", () => {
     fireEvent.click(screen.getByRole("button", { name: "alpha" }));
     expect(onPlay).toHaveBeenCalledOnce();
     expect(onChoose).toHaveBeenCalledWith("alpha");
+    const longestWords = ["information", "instruments", "interesting", "temperature"];
+    rerender(
+      <WordCheckOverlay
+        check={{ ...check, word: longestWords[0], choices: longestWords }}
+        feedback={null}
+        onPlay={onPlay}
+        onPlayChoice={onPlayChoice}
+        onChoose={onChoose}
+      />,
+    );
+    longestWords.forEach((word) => {
+      const label = screen.getByText(word);
+      expect(label).toHaveClass("word-check-choice-label");
+      expect(label.style.getPropertyValue("--word-check-choice-font-size")).toBe("18px");
+    });
+    rerender(
+      <WordCheckOverlay
+        check={check}
+        feedback={null}
+        speechNotice="Enable text-to-speech in device settings."
+        onPlay={onPlay}
+        onPlayChoice={onPlayChoice}
+        onChoose={onChoose}
+      />,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("Enable text-to-speech in device settings.");
 
     const correctFeedback: WordCheckFeedback = { choice: "alpha", correct: true };
     rerender(

@@ -300,16 +300,28 @@ test("later stages cannot unlock when earlier stages are incomplete", () => {
 
 test("hidden field trip controls stay hidden despite button display styles", () => {
   const css = fs.readFileSync(
-    path.join(__dirname, "..", "public", "styles.css"),
+    path.join(__dirname, "..", "src", "styles.css"),
     "utf8",
   );
 
   assert.match(css, /\[hidden\]\s*\{[^}]*display:\s*none\s*!important;/);
 });
 
+test("quick-check choices keep long words on one line", () => {
+  const css = fs.readFileSync(
+    path.join(__dirname, "..", "src", "styles.css"),
+    "utf8",
+  );
+  const choiceLabelRule = css.match(/\.word-check-choice-label\s*\{[^}]*\}/)?.[0] || "";
+
+  assert.match(choiceLabelRule, /white-space:\s*nowrap;/);
+  assert.match(choiceLabelRule, /overflow-wrap:\s*normal;/);
+  assert.match(choiceLabelRule, /word-break:\s*keep-all;/);
+});
+
 test("field-trip monsters face the player character", () => {
   const css = fs.readFileSync(
-    path.join(__dirname, "..", "public", "styles.css"),
+    path.join(__dirname, "..", "src", "styles.css"),
     "utf8",
   );
 
@@ -325,7 +337,7 @@ test("logged-out users start on the auth gate instead of the game", () => {
     "utf8",
   );
   const css = fs.readFileSync(
-    path.join(__dirname, "..", "public", "styles.css"),
+    path.join(__dirname, "..", "src", "styles.css"),
     "utf8",
   );
 
@@ -340,7 +352,7 @@ test("modern soldier weapon is rendered as a gun-shaped item", () => {
     "utf8",
   );
   const css = fs.readFileSync(
-    path.join(__dirname, "..", "public", "styles.css"),
+    path.join(__dirname, "..", "src", "styles.css"),
     "utf8",
   );
 
@@ -357,7 +369,7 @@ test("modern soldier third reward renders as radio art instead of shield art", (
     "utf8",
   );
   const css = fs.readFileSync(
-    path.join(__dirname, "..", "public", "styles.css"),
+    path.join(__dirname, "..", "src", "styles.css"),
     "utf8",
   );
 
@@ -378,7 +390,7 @@ test("stage 5 uses dedicated pilot and fighter-jet part art", () => {
     "utf8",
   );
   const css = fs.readFileSync(
-    path.join(__dirname, "..", "public", "styles.css"),
+    path.join(__dirname, "..", "src", "styles.css"),
     "utf8",
   );
 

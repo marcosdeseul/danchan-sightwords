@@ -1,0 +1,13 @@
+[Unit]
+Description=Back up the Sight Words PostgreSQL database
+Requires=docker.service
+After=docker.service
+RequiresMountsFor=/mnt/utm
+
+[Service]
+Type=oneshot
+EnvironmentFile=/opt/sight-words/.env.production
+ExecStart=/usr/local/sbin/sight-words-backup
+User=root
+Group=root
+UMask=0077
