@@ -53,6 +53,7 @@ function state(overrides: Partial<AppState> = {}): AppState {
     },
     loading: false,
     speaking: false,
+    activeWorld: "words",
     ...overrides,
   };
 }

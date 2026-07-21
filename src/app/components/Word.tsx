@@ -25,44 +25,7 @@ export function WordCard({
   celebration: string;
   celebrationKey: number;
 }) {
-  const wordRef = useRef<HTMLDivElement>(null);
-  const [wordFontSize, setWordFontSize] = useState(MAX_WORD_FONT_SIZE);
-
-  useLayoutEffect(() => {
-    const wordElement = wordRef.current as HTMLDivElement;
-
-    let cancelled = false;
-    const updateWordSize = () => {
-      if (cancelled) {
-        return;
-      }
-
-      const nextSize = fittedWordFontSize(word, wordElement.clientWidth);
-      setWordFontSize((currentSize) =>
-        Math.abs(currentSize - nextSize) > 0.5 ? nextSize : currentSize,
-      );
-    };
-
-    updateWordSize();
-
-    if (document.fonts?.ready) {
-      document.fonts.ready.then(updateWordSize).catch(() => undefined);
-    }
-
-    if (typeof ResizeObserver === "undefined") {
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    const observer = new ResizeObserver(updateWordSize);
-    observer.observe(wordElement);
-
-    return () => {
-      cancelled = true;
-      observer.disconnect();
-    };
-  }, [word]);
+  const [wordRef, wordFontSize] = useFittedWordFontSize<HTMLDivElement>(word);
 
   return (
     <div className="word-card">
@@ -105,9 +68,66 @@ const MIN_WORD_FONT_SIZE = 38;
 const WORD_FONT_FAMILY = 'Inter, ui-rounded, "Arial Rounded MT Bold", "Trebuchet MS", Arial, sans-serif';
 let wordMeasureCanvas: HTMLCanvasElement | null = null;
 
-export function fittedWordFontSize(word: string, containerWidth: number): number {
+export function useFittedWordFontSize<T extends HTMLElement>(
+  word: string,
+  maxFontSize = MAX_WORD_FONT_SIZE,
+  minFontSize = MIN_WORD_FONT_SIZE,
+) {
+  const elementRef = useRef<T>(null);
+  const [fontSize, setFontSize] = useState(maxFontSize);
+
+  useLayoutEffect(() => {
+    const element = elementRef.current as T;
+
+    let cancelled = false;
+    const updateSize = () => {
+      if (cancelled) {
+        return;
+      }
+
+      const nextSize = fittedWordFontSize(
+        word,
+        element.clientWidth,
+        maxFontSize,
+        minFontSize,
+      );
+      setFontSize((currentSize) =>
+        Math.abs(currentSize - nextSize) > 0.5 ? nextSize : currentSize,
+      );
+    };
+
+    updateSize();
+
+    if (document.fonts?.ready) {
+      document.fonts.ready.then(updateSize).catch(() => undefined);
+    }
+
+    if (typeof ResizeObserver === "undefined") {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const observer = new ResizeObserver(updateSize);
+    observer.observe(element);
+
+    return () => {
+      cancelled = true;
+      observer.disconnect();
+    };
+  }, [maxFontSize, minFontSize, word]);
+
+  return [elementRef, fontSize] as const;
+}
+
+export function fittedWordFontSize(
+  word: string,
+  containerWidth: number,
+  maxFontSize = MAX_WORD_FONT_SIZE,
+  minFontSize = MIN_WORD_FONT_SIZE,
+): number {
   if (!containerWidth || typeof document === "undefined") {
-    return MAX_WORD_FONT_SIZE;
+    return maxFontSize;
   }
 
   if (!wordMeasureCanvas) {
@@ -117,16 +137,16 @@ export function fittedWordFontSize(word: string, containerWidth: number): number
   const context = wordMeasureCanvas.getContext("2d");
 
   if (!context) {
-    return MAX_WORD_FONT_SIZE;
+    return maxFontSize;
   }
 
-  context.font = `950 ${MAX_WORD_FONT_SIZE}px ${WORD_FONT_FAMILY}`;
+  context.font = `950 ${maxFontSize}px ${WORD_FONT_FAMILY}`;
 
   const measuredWidth = Math.max(1, context.measureText(word).width);
   const availableWidth = Math.max(120, containerWidth - 12);
-  const fittedSize = Math.floor(MAX_WORD_FONT_SIZE * Math.min(1, availableWidth / measuredWidth));
+  const fittedSize = Math.floor(maxFontSize * Math.min(1, availableWidth / measuredWidth));
 
-  return Math.max(MIN_WORD_FONT_SIZE, Math.min(MAX_WORD_FONT_SIZE, fittedSize));
+  return Math.max(minFontSize, Math.min(maxFontSize, fittedSize));
 }
 
 export function ProgressPanel({

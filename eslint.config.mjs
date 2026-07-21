@@ -4,8 +4,17 @@ const MAX_LOGICAL_LINES = 500;
 
 export default [
   {
+    ignores: [
+      "coverage/**",
+      "dist/**",
+      "node_modules/**",
+      "storybook-static/**",
+      "src/**/*.test.*",
+      "src/**/*.stories.*",
+    ],
+  },
+  {
     files: ["src/**/*.{ts,tsx}", "server/**/*.js"],
-    ignores: ["src/**/*.test.*", "src/**/*.stories.*"],
     languageOptions: {
       parser: tsParser,
       parserOptions: {

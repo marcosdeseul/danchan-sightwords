@@ -1,6 +1,8 @@
 "use strict";
 
-const CONTENT_VERSION = 6;
+const { createPhraseForest } = require("./phrase-content");
+
+const CONTENT_VERSION = 7;
 
 const FIRST_100 = [
   "the", "of", "and", "a", "to", "in", "is", "you", "that", "it",
@@ -275,6 +277,7 @@ function rewardsForStage(stage) {
 }
 
 const STAGE_BY_ID = new Map(STAGES.map((stage) => [stage.id, stage]));
+const PHRASE_FOREST = createPhraseForest(STAGES.flatMap((stage) => stage.words));
 const PUBLIC_CONTENT = Object.freeze({
   version: CONTENT_VERSION,
   rewardAliases: REWARD_ID_ALIASES,
@@ -288,6 +291,7 @@ const PUBLIC_CONTENT = Object.freeze({
     rewards: rewardsForStage(stage),
     fieldTrip: stage.fieldTrip,
   })),
+  phraseForest: PHRASE_FOREST,
 });
 
 function stageById(stageId) {
@@ -300,6 +304,7 @@ function allStageIds() {
 
 module.exports = {
   CONTENT_VERSION,
+  PHRASE_FOREST,
   PUBLIC_CONTENT,
   REWARD_ID_ALIASES,
   STAGES,

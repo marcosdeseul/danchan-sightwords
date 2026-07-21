@@ -9,11 +9,13 @@ import type {
 import {
   clearOfflineProgress,
   clearPreviousLocalProgress,
+  LEGACY_STORAGE_KEY,
+  OFFLINE_STORAGE_PREFIX,
   offlineProgressStorageKey,
   readJsonStorage,
   saveOfflineProgress,
+  STORAGE_KEY,
 } from "./game/storage";
-
 export {
   clearOfflineProgress,
   clearPreviousLocalProgress,
@@ -24,6 +26,14 @@ export {
   saveOfflineProgress,
   STORAGE_KEY,
 } from "./game/storage";
+
+import {
+  defaultPhraseForestProgress,
+  sanitizePhraseForestProgress,
+} from "./phraseForest";
+import { newWordWeightForProgress } from "./game/wordSelection";
+
+export { newWordWeightForProgress } from "./game/wordSelection";
 
 export const REVIEW_PRACTICE_WEIGHT = 80;
 export const REVIEW_KNOWN_WEIGHT = 20;
@@ -74,6 +84,7 @@ export function defaultProgress(content: SightWordsContent): ProgressState {
     unlockedStageIds: [1],
     completedFieldTrips: [],
     stages,
+    phraseForest: defaultPhraseForestProgress(content.phraseForest),
   };
 }
 
@@ -186,6 +197,11 @@ export function sanitizeProgress(
   progress.activeStageId = progress.unlockedStageIds.includes(activeStageId)
     ? activeStageId
     : progress.unlockedStageIds[progress.unlockedStageIds.length - 1];
+  progress.phraseForest = sanitizePhraseForestProgress(
+    content.phraseForest,
+    source.phraseForest,
+    wordAcademyComplete(content, progress),
+  );
 
   return progress;
 }
@@ -283,6 +299,15 @@ export function totalKnownCount(
   return content.stages.reduce(
     (sum, stage) => sum + progress.stages[String(stage.id)].knownWords.length,
     0,
+  );
+}
+
+export function wordAcademyComplete(
+  content: SightWordsContent,
+  progress: ProgressState,
+): boolean {
+  return content.stages.every((stage) =>
+    isStageComplete(stage, progress.stages[String(stage.id)]),
   );
 }
 
@@ -439,27 +464,9 @@ export function selectWeightedWordIndex(
   return hasPracticeWords ? randomItem(buckets.practice) : randomItem(buckets.known);
 }
 
-export function newWordWeightForProgress(progressRatio: number): number {
-  if (progressRatio <= 0.25) {
-    return 100;
-  }
-
-  if (progressRatio <= 0.5) {
-    return 90;
-  }
-
-  if (progressRatio <= 0.75) {
-    return 80;
-  }
-
-  return 70;
-}
-
 export function currentMazeLayout(progress: ProgressState, stage: StageContent): readonly string[] {
-  const stageState = progress.stages[String(stage.id)];
-  const milestone = stageState.pendingReward?.milestone || 10;
-  const layoutIndex = Math.max(0, Math.floor(milestone / 10) - 1) % MAZE_LAYOUTS.length;
-  return MAZE_LAYOUTS[layoutIndex];
+  const milestone = progress.stages[String(stage.id)].pendingReward?.milestone || 10;
+  return MAZE_LAYOUTS[Math.max(0, Math.floor(milestone / 10) - 1) % MAZE_LAYOUTS.length];
 }
 
 function cleanWordArray(value: unknown, words: string[]): string[] {
@@ -580,10 +587,5 @@ function resolveRewardId(content: SightWordsContent, itemId: string): string {
   return content.rewardAliases?.[itemId] || itemId;
 }
 
-function hasAnyWordBucket(buckets: WordBuckets): boolean {
-  return buckets.new.length > 0 || buckets.practice.length > 0 || buckets.known.length > 0;
-}
-
-function randomItem(items: number[]): number {
-  return items[Math.floor(Math.random() * items.length)];
-}
+function hasAnyWordBucket(buckets: WordBuckets): boolean { return buckets.new.length > 0 || buckets.practice.length > 0 || buckets.known.length > 0; }
+function randomItem(items: number[]): number { return items[Math.floor(Math.random() * items.length)]; }

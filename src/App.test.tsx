@@ -23,7 +23,9 @@ import App, {
   firstWordLetter,
   fittedWordFontSize,
   initialState,
+  phraseReadingDayId,
   randomWordIndex,
+  readingDayControl,
   reducer,
   rewardStatus,
   shuffleWords,
@@ -40,6 +42,8 @@ import type {
   WordCheckState,
 } from "./App";
 import type {
+  PhraseForestContent,
+  PhraseItemContent,
   ProgressState,
   RewardItem,
   RewardSlot,
@@ -47,6 +51,7 @@ import type {
   StageContent,
   User,
 } from "./types";
+import { SPEECH_REPLAY_DELAY_MS, SPEECH_START_TIMEOUT_MS } from "./app/speech";
 
 vi.mock("./api", () => ({ api: vi.fn() }));
 
@@ -54,6 +59,15 @@ const apiMock = vi.mocked(api);
 
 const user: User = { id: 7, username: "dan", email: "dan@example.com" };
 const rewardSlots: RewardSlot[] = ["weapon", "boots", "shield", "cape"];
+
+test("groups Phrase Forest mastery evidence by local reading day", () => {
+  expect(phraseReadingDayId(new Date(2026, 6, 21, 12, 30)))
+    .toBe("phrase-reading-day-2026-07-21");
+  const start = vi.fn();
+  expect(readingDayControl(false, start)).toBeUndefined();
+  readingDayControl(true, start)?.();
+  expect(start).toHaveBeenCalledOnce();
+});
 
 function createStage(id: number, words = ["alpha", "apple", "beta", "cat"]): StageContent {
   return {
@@ -82,6 +96,45 @@ function createStage(id: number, words = ["alpha", "apple", "beta", "cat"]): Sta
 
 function createContent(): SightWordsContent {
   return { version: 1, stages: [createStage(1), createStage(2, ["dog", "door", "eel", "fox"])] };
+}
+
+function createPhraseForestContent(): PhraseForestContent {
+  const items = Array.from({ length: 75 }, (_, index): PhraseItemContent => ({
+    id: `phrase-6-${index + 1}`,
+    text: index % 2 === 0 ? "my book" : "your book",
+    tokens: index % 2 === 0 ? ["my", "book"] : ["your", "book"],
+    contrastKey: "stage-6-book",
+    meaningSafe: true,
+    accessibilityText: index % 2 === 0 ? "A child holding a book" : "A book for you",
+    visual: { kind: "symbol", symbol: index % 2 === 0 ? "🧒 📘" : "👉 📘" },
+  }));
+
+  return {
+    title: "Phrase Forest",
+    subtitle: "Connect words. Restore the forest.",
+    stages: [{
+      id: 6,
+      title: "Stage 6",
+      subtitle: "Two-Word Groups",
+      areaName: "First Crossing",
+      companion: { id: "fox", name: "Fox", emoji: "🦊" },
+      restoration: "Forest Footbridge",
+      intro: "Pair familiar words to reconnect the first forest path.",
+      missionCount: 20,
+      chapters: [
+        { id: "discover", title: "Discover", missionStart: 1, missionEnd: 5 },
+        { id: "practice", title: "Practice", missionStart: 6, missionEnd: 10 },
+        { id: "apply", title: "Apply", missionStart: 11, missionEnd: 15 },
+        { id: "prove", title: "Prove", missionStart: 16, missionEnd: 20 },
+      ],
+      practicePhrases: items.slice(0, 60),
+      checkpointPhrases: items.slice(60),
+    }],
+  };
+}
+
+function createContentWithPhraseForest(): SightWordsContent {
+  return { ...createContentWithoutRewards(), phraseForest: createPhraseForestContent() };
 }
 
 function createContentWithoutRewards(): SightWordsContent {
@@ -142,6 +195,7 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  Reflect.deleteProperty(window, "speechSynthesis");
   vi.useRealTimers();
 });
 
@@ -192,22 +246,43 @@ beforeEach(() => {
   vi.spyOn(window, "confirm").mockReturnValue(true);
 });
 
-function installSpeech() {
+function createVoice(
+  overrides: Partial<SpeechSynthesisVoice> = {},
+): SpeechSynthesisVoice {
+  return {
+    default: true,
+    lang: "en-US",
+    localService: true,
+    name: "Android English",
+    voiceURI: "android-en-us",
+    ...overrides,
+  };
+}
+
+function installSpeech(voices: SpeechSynthesisVoice[] = []) {
   const utterances: FakeUtterance[] = [];
   class FakeUtterance {
     lang = "";
     rate = 0;
     pitch = 0;
     volume = 0;
+    voice: SpeechSynthesisVoice | null = null;
     onstart: (() => void) | null = null;
     onend: (() => void) | null = null;
-    onerror: (() => void) | null = null;
+    onerror: ((event?: { error?: string }) => void) | null = null;
 
     constructor(public text: string) {
       utterances.push(this);
     }
   }
   const speechSynthesis = {
+    speaking: false,
+    pending: false,
+    paused: false,
+    getVoices: vi.fn(() => voices),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    resume: vi.fn(),
     cancel: vi.fn(),
     speak: vi.fn(),
   };
@@ -282,15 +357,24 @@ describe("App reducer", () => {
     const progress = defaultProgress(content);
     const alternate = structuredClone(progress);
     alternate.activeStageId = 2;
+    alternate.phraseForest.unlockedStageIds = [6];
     let state = reducer(initialState, { type: "bootstrapped", content, progress });
 
     expect(state).toMatchObject({ content, progress, loading: false });
+    state = reducer(state, { type: "setActiveWorld", world: "phrases" });
+    expect(state.activeWorld).toBe("phrases");
     state = reducer(state, { type: "accountReady", user, message: "ready" });
     expect(state.progress).toBe(progress);
+    expect(state.activeWorld).toBe("phrases");
     state = reducer(state, { type: "accountReady", user: null, progress: alternate, message: "signed out" });
     expect(state.progress).toBe(alternate);
+    expect(state.activeWorld).toBe("words");
     state = reducer(state, { type: "setUser", user, message: "hello" });
+    state = reducer(state, { type: "setActiveWorld", world: "phrases" });
+    state = reducer(state, { type: "setProgress", progress: alternate });
+    expect(state.activeWorld).toBe("phrases");
     state = reducer(state, { type: "setProgress", progress });
+    expect(state.activeWorld).toBe("words");
     expect(state.lastAnswerAction).toBeNull();
     const lastAnswerAction = { stageId: 1, wordIndex: 0, previousState: progress };
     state = reducer(state, { type: "setProgress", progress: alternate, lastAnswerAction });
@@ -543,6 +627,7 @@ describe("App pure helpers", () => {
     expect(fittedWordFontSize("word", 50)).toBe(168);
     context.measureText.mockReturnValue({ width: 10_000 });
     expect(fittedWordFontSize("word", 121)).toBe(38);
+    expect(fittedWordFontSize("word", 500, 36, 18)).toBe(18);
     expect(getContext).toHaveBeenCalled();
   });
 });
@@ -600,6 +685,65 @@ describe("App integration", () => {
     expect(signup).toBe(true);
   });
 
+  test("unlocks Phrase Forest after Word Academy and switches safely between worlds", async () => {
+    const content = createContentWithPhraseForest();
+    const lockedProgress = defaultProgress(content);
+    const first = await renderLoggedInApp(content, lockedProgress);
+    const lockedButton = screen.getByRole("button", { name: /Phrase Forest/ });
+
+    expect(lockedButton).toBeDisabled();
+    expect(lockedButton).toHaveTextContent("Complete 1,000 words");
+    lockedButton.removeAttribute("disabled");
+    fireEvent.click(lockedButton);
+    expect(screen.getByLabelText("Current word: alpha")).toBeInTheDocument();
+    first.unmount();
+
+    const completeProgress = defaultProgress(content);
+    content.stages.forEach((stage) => {
+      completeProgress.stages[String(stage.id)].knownWords = [...stage.words];
+    });
+    const second = await renderLoggedInApp(content, completeProgress);
+
+    const phraseButton = screen.getByRole("button", { name: /Phrase Forest/ });
+    expect(phraseButton).toBeEnabled();
+    expect(phraseButton).toHaveTextContent("Stages 6-10");
+    fireEvent.click(phraseButton);
+
+    await screen.findByRole("heading", { name: "Choose the bridge supply" });
+    expect(screen.getByRole("heading", { name: "Stage 6" })).toBeInTheDocument();
+    expect(screen.getAllByText("First Crossing")).toHaveLength(2);
+    expect(document.body).toHaveClass("phrase-forest");
+
+    fireEvent.click(screen.getByRole("button", { name: /Word Academy/ }));
+    await screen.findByLabelText("Current word: alpha");
+    expect(document.body).toHaveClass("stage-ancient");
+    second.unmount();
+
+    const masteredProgress = defaultProgress(content);
+    content.stages.forEach((stage) => {
+      masteredProgress.stages[String(stage.id)].knownWords = [...stage.words];
+    });
+    const stageSix = masteredProgress.phraseForest.stages["6"];
+    stageSix.completedMissionIds = Array.from(
+      { length: 20 },
+      (_, index) => `phrase-stage-6-mission-${index + 1}`,
+    );
+    stageSix.completedCheckpointIds = stageSix.completedMissionIds.slice(15, 18);
+    stageSix.checkpointSessionIds = Object.fromEntries(
+      stageSix.completedCheckpointIds.map((missionId, index) => [missionId, `day-${index + 1}`]),
+    );
+    stageSix.completed = true;
+    stageSix.mastered = true;
+    stageSix.restoredArea = true;
+    stageSix.companionUnlocked = true;
+    await renderLoggedInApp(content, masteredProgress);
+
+    fireEvent.click(screen.getByRole("button", { name: /Phrase Forest/ }));
+    const nextDayButton = await screen.findByRole("button", { name: "Test next reading day" });
+    fireEvent.click(nextDayButton);
+    expect(nextDayButton).toBeInTheDocument();
+  });
+
   test("handles speech fallbacks and callbacks, word actions, undo, navigation, shuffle, and stage selection", async () => {
     const content = createContentWithoutRewards();
     const progress = defaultProgress(content);
@@ -609,18 +753,36 @@ describe("App integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Play word" }));
     expect(screen.getByText("Speech is not available in this browser.")).toBeInTheDocument();
 
-    const speech = installSpeech();
+    const androidVoice = createVoice();
+    const speech = installSpeech([androidVoice]);
     fireEvent.click(screen.getByRole("button", { name: "Play word" }));
     const utterance = speech.utterances.at(-1)!;
-    expect(utterance).toMatchObject({ text: "alpha", lang: "en-US", rate: 0.76, pitch: 1, volume: 1 });
+    expect(utterance).toMatchObject({
+      text: "alpha",
+      lang: "en-US",
+      rate: 0.76,
+      pitch: 1,
+      volume: 1,
+      voice: androidVoice,
+    });
+    expect(speech.speechSynthesis.cancel).not.toHaveBeenCalled();
+    expect(speech.speechSynthesis.resume).toHaveBeenCalledOnce();
+    speech.speechSynthesis.pending = true;
     fireEvent.click(screen.getByRole("button", { name: "Play word" }));
     expect(speech.speechSynthesis.cancel).toHaveBeenCalled();
     act(() => utterance.onstart?.());
-    expect(document.body).toHaveClass("is-speaking");
     act(() => utterance.onend?.());
-    expect(document.body).not.toHaveClass("is-speaking");
     act(() => utterance.onerror?.());
-    expect(screen.getByText("Speech could not play. Try again.")).toBeInTheDocument();
+    await waitFor(() => expect(speech.speechSynthesis.speak).toHaveBeenCalledTimes(2), {
+      timeout: SPEECH_REPLAY_DELAY_MS + 500,
+    });
+    const replayedUtterance = speech.utterances.at(-1)!;
+    act(() => replayedUtterance.onstart?.());
+    expect(document.body).toHaveClass("is-speaking");
+    act(() => replayedUtterance.onend?.());
+    expect(document.body).not.toHaveClass("is-speaking");
+    act(() => replayedUtterance.onerror?.({ error: "network" }));
+    expect(screen.getByText("This speech voice needs an internet connection. Check the connection and try again.")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Practice again" }));
     await screen.findByText("Practice", { selector: ".word-state" });
@@ -632,6 +794,36 @@ describe("App integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Next word" }));
     fireEvent.click(screen.getByRole("button", { name: "Shuffle words" }));
 
+  });
+
+  test("reports a silent device speech engine instead of leaving Android users without feedback", async () => {
+    const content = createContentWithoutRewards();
+    await renderLoggedInApp(content, defaultProgress(content));
+    const speech = installSpeech();
+    vi.useFakeTimers();
+
+    fireEvent.click(screen.getByRole("button", { name: "Play word" }));
+    expect(speech.speechSynthesis.speak).toHaveBeenCalledOnce();
+    act(() => vi.advanceTimersByTime(SPEECH_START_TIMEOUT_MS));
+
+    expect(screen.getByText(/No sound started.*enable text-to-speech/i)).toBeInTheDocument();
+    expect(speech.speechSynthesis.cancel).toHaveBeenCalledOnce();
+  });
+
+  test("clears a pending speech replay timer when the app unmounts", async () => {
+    const content = createContentWithoutRewards();
+    const view = await renderLoggedInApp(content, defaultProgress(content));
+    const speech = installSpeech();
+    speech.speechSynthesis.pending = true;
+    vi.useFakeTimers();
+    const clearTimeoutSpy = vi.spyOn(window, "clearTimeout");
+
+    fireEvent.click(screen.getByRole("button", { name: "Play word" }));
+    expect(speech.speechSynthesis.cancel).toHaveBeenCalledOnce();
+    expect(speech.speechSynthesis.speak).not.toHaveBeenCalled();
+
+    view.unmount();
+    expect(clearTimeoutSpy).toHaveBeenCalledOnce();
   });
 
   test("selects an unlocked stage and applies its theme", async () => {
@@ -740,6 +932,27 @@ describe("App integration", () => {
     fireEvent(window, new Event("online"));
     await screen.findByText("Back online. Progress synced.");
     expect(putCount).toBe(2);
+  });
+
+  test("reports storage failures after a failed online save", async () => {
+    const content = createContentWithoutRewards();
+    const progress = defaultProgress(content);
+    apiMock.mockImplementation(async (path, options = {}) => {
+      if (path === "/api/content") return content;
+      if (path === "/api/me") return { user };
+      if (path === "/api/progress" && !options.method) return { progress };
+      if (path === "/api/progress") throw new Error("server down");
+      throw new Error(`Unexpected API request: ${path}`);
+    });
+    render(<App />);
+    await screen.findByText("dan");
+    vi.spyOn(window.localStorage, "setItem").mockImplementation(() => {
+      throw new Error("storage blocked");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Practice again" }));
+
+    await screen.findByText("Server unavailable. Keep this page open so progress can retry.");
   });
 
   test("claims a pending maze reward exactly once, reveals it, continues, and manages inventory", async () => {
@@ -930,7 +1143,7 @@ describe("App integration", () => {
     fireEvent.change(screen.getByLabelText("Username"), { target: { value: "dan" } });
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "pass" } });
     fireEvent.click(screen.getByRole("button", { name: "Log in" }));
-    await screen.findByText("Back online. Progress synced.");
+    await screen.findByText("Back online. Progress synced.", {}, { timeout: 3_000 });
     first.unmount();
 
     window.localStorage.setItem(
@@ -1007,6 +1220,24 @@ describe("App integration", () => {
     await screen.findByText("All stages complete!");
   });
 
+  test("announces Phrase Forest when the final Word Academy word is completed", async () => {
+    const content = createContentWithPhraseForest();
+    const progress = defaultProgress(content);
+    vi.spyOn(Math, "random").mockReturnValue(0.9);
+
+    progress.stages["1"].knownWords = [...content.stages[0].words];
+    progress.stages["1"].fieldTripCompleted = true;
+    progress.activeStageId = 2;
+    progress.stages["2"].knownWords = content.stages[1].words.slice(0, -1);
+    progress.stages["2"].currentIndex = content.stages[1].words.length - 1;
+
+    await renderLoggedInApp(content, progress);
+    fireEvent.click(screen.getByRole("button", { name: "I know it" }));
+
+    await screen.findByText("Phrase Forest unlocked!");
+    expect(screen.getByRole("button", { name: /Phrase Forest/ })).toBeEnabled();
+  });
+
   test("cleans up active quiz and defense timers on logout and unmount", async () => {
     const content = createContentWithoutRewards();
     vi.spyOn(Math, "random").mockReturnValue(0);
@@ -1015,7 +1246,7 @@ describe("App integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "I know it" }));
     fireEvent.click(screen.getByRole("button", { name: "beta" }));
     fireEvent.click(screen.getByRole("button", { name: "Log out" }));
-    act(() => vi.runAllTimers());
+    act(() => vi.runOnlyPendingTimers());
     vi.useRealTimers();
     first.unmount();
 
@@ -1313,6 +1544,14 @@ describe("presentational components", () => {
     const onPlayChoice = vi.fn();
     const onChoose = vi.fn();
     const check = createCheck();
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+      configurable: true,
+      get: () => 240,
+    });
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+      font: "",
+      measureText: () => ({ width: 1_000 }),
+    } as unknown as CanvasRenderingContext2D);
     const { rerender } = render(
       <WordCheckOverlay check={null} feedback={null} onPlay={onPlay} onPlayChoice={onPlayChoice} onChoose={onChoose} />,
     );
@@ -1324,6 +1563,32 @@ describe("presentational components", () => {
     fireEvent.click(screen.getByRole("button", { name: "alpha" }));
     expect(onPlay).toHaveBeenCalledOnce();
     expect(onChoose).toHaveBeenCalledWith("alpha");
+    const longestWords = ["information", "instruments", "interesting", "temperature"];
+    rerender(
+      <WordCheckOverlay
+        check={{ ...check, word: longestWords[0], choices: longestWords }}
+        feedback={null}
+        onPlay={onPlay}
+        onPlayChoice={onPlayChoice}
+        onChoose={onChoose}
+      />,
+    );
+    longestWords.forEach((word) => {
+      const label = screen.getByText(word);
+      expect(label).toHaveClass("word-check-choice-label");
+      expect(label.style.getPropertyValue("--word-check-choice-font-size")).toBe("18px");
+    });
+    rerender(
+      <WordCheckOverlay
+        check={check}
+        feedback={null}
+        speechNotice="Enable text-to-speech in device settings."
+        onPlay={onPlay}
+        onPlayChoice={onPlayChoice}
+        onChoose={onChoose}
+      />,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("Enable text-to-speech in device settings.");
 
     const correctFeedback: WordCheckFeedback = { choice: "alpha", correct: true };
     rerender(

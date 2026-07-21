@@ -2,12 +2,24 @@
 
 const {
   CONTENT_VERSION,
+  PHRASE_FOREST,
   REWARD_ID_ALIASES,
   STAGES,
   allStageIds,
   rewardsForStage,
   stageById,
 } = require("./content");
+const { createDefaultPhraseForestProgress: createPhraseForestProgress, sanitizePhraseForestProgress: sanitizePhraseForest } = require("./phrase-progress");
+
+const PHRASE_MISSION_COUNT = 20;
+const PHRASE_CHECKPOINT_START = 16;
+const PHRASE_REQUIRED_CHECKPOINTS = 3;
+const PHRASE_MISSION_ACTIVITIES = [
+  "match", "build", "match", "build", "match",
+  "build", "match", "build", "match", "build",
+  "match", "build", "match", "build", "match",
+  "build", "match", "build", "match", "match",
+];
 
 function createDefaultStageState(stage) {
   return {
@@ -37,6 +49,7 @@ function createDefaultProgress() {
     unlockedStageIds: [1],
     completedFieldTrips: [],
     stages,
+    phraseForest: createPhraseForestProgress(),
   };
 }
 
@@ -86,12 +99,15 @@ function sanitizeProgress(value) {
     ? requestedActiveStage
     : unlockedStageIds[unlockedStageIds.length - 1];
 
+  const phraseForest = sanitizePhraseForest(source.phraseForest, stages);
+
   return {
     version: CONTENT_VERSION,
     activeStageId,
     unlockedStageIds,
     completedFieldTrips,
     stages,
+    phraseForest,
   };
 }
 
@@ -266,8 +282,61 @@ function mergeProgress(existing, incoming) {
   );
   merged.unlockedStageIds = unlockedStageIdsFor(merged.stages);
   merged.activeStageId = next.activeStageId;
+  merged.phraseForest = mergePhraseForestProgress(base.phraseForest, next.phraseForest);
 
   return sanitizeProgress(merged);
+}
+
+function mergePhraseForestProgress(base, next) {
+  const merged = createPhraseForestProgress();
+
+  PHRASE_FOREST.stages.forEach((stage) => {
+    const key = String(stage.id);
+    const baseStage = base.stages[key];
+    const nextStage = next.stages[key];
+    const completedMissionIds = unique([
+      ...baseStage.completedMissionIds,
+      ...nextStage.completedMissionIds,
+    ]);
+    const sourceWithMoreMissions = nextStage.completedMissionIds.length >=
+      baseStage.completedMissionIds.length
+      ? nextStage
+      : baseStage;
+
+    merged.stages[key] = {
+      currentRoundIndex: sourceWithMoreMissions.currentRoundIndex,
+      completedMissionIds,
+      completedCheckpointIds: unique([
+        ...baseStage.completedCheckpointIds,
+        ...nextStage.completedCheckpointIds,
+      ]),
+      checkpointSessionIds: {
+        ...baseStage.checkpointSessionIds,
+        ...nextStage.checkpointSessionIds,
+      },
+      checkpointAttemptSessionIds: unique([
+        ...baseStage.checkpointAttemptSessionIds,
+        ...nextStage.checkpointAttemptSessionIds,
+      ]),
+      checkpointAttempt: sourceWithMoreMissions.checkpointAttempt,
+      helpedItemIds: unique([...baseStage.helpedItemIds, ...nextStage.helpedItemIds]),
+      independentItemIds: unique([
+        ...baseStage.independentItemIds,
+        ...nextStage.independentItemIds,
+      ]),
+      itemResults: mergePhraseItemResults(baseStage.itemResults, nextStage.itemResults),
+    };
+  });
+
+  merged.activeStageId = next.activeStageId;
+  return merged;
+}
+
+function mergePhraseItemResults(first, second) {
+  return Object.fromEntries([...new Set([...Object.keys(first), ...Object.keys(second)])].map((itemId) => {
+    const left = first[itemId] || {}; const right = second[itemId] || {};
+    return [itemId, { correct: Math.max(left.correct || 0, right.correct || 0), errors: Math.max(left.errors || 0, right.errors || 0), phraseHelp: Math.max(left.phraseHelp || 0, right.phraseHelp || 0), wordHelp: Math.max(left.wordHelp || 0, right.wordHelp || 0) }];
+  }));
 }
 
 function cleanWordArray(value, words) {

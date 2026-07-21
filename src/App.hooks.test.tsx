@@ -2,6 +2,7 @@
 
 import { afterEach, expect, test, vi } from "vitest";
 import { defaultProgress } from "./game";
+import { SPEECH_REPLAY_DELAY_MS, SPEECH_START_TIMEOUT_MS } from "./app/speech";
 import type { AppState, WordCheckFeedback, WordCheckState } from "./App";
 import type { ProgressState, RewardSlot, SightWordsContent, StageContent, User } from "./types";
 
@@ -62,6 +63,7 @@ function createState(content: SightWordsContent, overrides: Partial<AppState> = 
     },
     loading: false,
     speaking: false,
+    activeWorld: "words",
     ...overrides,
   };
 }
@@ -128,13 +130,15 @@ async function createHookHarness({
   const appModule = await import("./App");
   appModule.default();
   expect(callbacks).toHaveLength(37);
-  expect(refs).toHaveLength(8);
+  expect(refs).toHaveLength(9);
 
   return { callbacks, effects, refs, setters, dispatch, api };
 }
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllGlobals();
+  Reflect.deleteProperty(window, "speechSynthesis");
   vi.doUnmock("react");
   vi.doUnmock("./api");
   vi.resetModules();
@@ -412,6 +416,8 @@ test("internal effects clean timers and browser listeners", async () => {
   vi.useFakeTimers();
   harness.refs[4].current = window.setTimeout(() => undefined, 20);
   harness.refs[5].current = window.setTimeout(() => undefined, 20);
+  harness.refs[8].current.replayTimer = window.setTimeout(() => undefined, 20);
+  harness.refs[8].current.startTimer = window.setTimeout(() => undefined, 20);
   const cleanTimers = harness.effects[4]();
   cleanTimers?.();
 
@@ -425,6 +431,7 @@ test("internal effects clean timers and browser listeners", async () => {
   Reflect.deleteProperty(window, "speechSynthesis");
   const unloadCleanup = harness.effects[8]();
   window.dispatchEvent(new Event("beforeunload"));
+  harness.refs[8].current.startTimer = window.setTimeout(() => undefined, 20);
   unloadCleanup?.();
 
   const cancelledHarness = await createHookHarness({ state: createState(content) });
@@ -433,4 +440,73 @@ test("internal effects clean timers and browser listeners", async () => {
   cancelInitialize?.();
   await Promise.resolve();
   await Promise.resolve();
+});
+
+test("device speech ignores stale events and contains browser engine failures", async () => {
+  const content = createContent();
+  const harness = await createHookHarness({ state: createState(content) });
+  const utterances: Array<{
+    onstart: (() => void) | null;
+    onend: (() => void) | null;
+    onerror: ((event?: { error?: string }) => void) | null;
+  }> = [];
+  class FakeUtterance {
+    lang = "";
+    rate = 0;
+    pitch = 0;
+    volume = 0;
+    voice: SpeechSynthesisVoice | null = null;
+    onstart: (() => void) | null = null;
+    onend: (() => void) | null = null;
+    onerror: ((event?: { error?: string }) => void) | null = null;
+
+    constructor(public text: string) {
+      utterances.push(this);
+    }
+  }
+  const synthesis = {
+    speaking: false,
+    pending: false,
+    paused: false,
+    getVoices: vi.fn(() => []),
+    resume: vi.fn(),
+    cancel: vi.fn(),
+    speak: vi.fn(),
+  };
+  vi.stubGlobal("SpeechSynthesisUtterance", FakeUtterance);
+  Object.defineProperty(window, "SpeechSynthesisUtterance", {
+    configurable: true,
+    value: FakeUtterance,
+  });
+  Object.defineProperty(window, "speechSynthesis", {
+    configurable: true,
+    value: synthesis,
+  });
+  vi.useFakeTimers();
+
+  harness.callbacks[5]("alpha");
+  const staleUtterance = utterances.at(-1)!;
+  synthesis.pending = true;
+  harness.callbacks[5]("apple");
+  staleUtterance.onstart?.();
+  staleUtterance.onend?.();
+  staleUtterance.onerror?.();
+  harness.refs[8].current.requestId += 1;
+  vi.advanceTimersByTime(SPEECH_REPLAY_DELAY_MS);
+
+  synthesis.pending = false;
+  harness.callbacks[5]("beta");
+  harness.refs[8].current.requestId += 1;
+  vi.advanceTimersByTime(SPEECH_START_TIMEOUT_MS);
+
+  synthesis.speak.mockImplementationOnce(() => {
+    throw new Error("speech engine crashed");
+  });
+  harness.callbacks[5]("cat");
+
+  expect(synthesis.cancel).toHaveBeenCalled();
+  expect(harness.dispatch).toHaveBeenCalledWith({
+    type: "setSpeechNotice",
+    message: "Speech could not play. Check media volume and try again.",
+  });
 });

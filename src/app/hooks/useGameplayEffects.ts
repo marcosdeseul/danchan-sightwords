@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { MOVE_DELTAS, TRIP_TARGET, stageById } from "../../game";
+import { getSpeechVoices } from "../speech";
 import type { TreasureRevealState } from "../state";
 import type { AppDispatch, AppStateRef, CurrentRef } from "./types";
 import type { AppState } from "../state";
@@ -18,6 +19,8 @@ export function useGameplayEffects({
   dispatch,
   wordCheckFeedbackTimer,
   fieldTripDefenseTimer,
+  speechControl,
+  stopSpeech,
 }: {
   state: AppState;
   stateRef: AppStateRef;
@@ -30,6 +33,12 @@ export function useGameplayEffects({
   dispatch: AppDispatch;
   wordCheckFeedbackTimer: CurrentRef<number>;
   fieldTripDefenseTimer: CurrentRef<number>;
+  speechControl?: CurrentRef<{
+    replayTimer: number;
+    startTimer: number;
+    requestId: number;
+  }>;
+  stopSpeech?: () => void;
 }) {
   useEffect(() => () => {
     if (wordCheckFeedbackTimer.current) {
@@ -119,13 +128,28 @@ export function useGameplayEffects({
   }, [inventoryOpen, moveFieldTrip, moveMaze, setInventoryOpen, stateRef, treasureReveal]);
 
   useEffect(() => {
-    const handleBeforeUnload = () => {
-      if ("speechSynthesis" in window) {
-        window.speechSynthesis.cancel();
-      }
-    };
+    const synthesis = "speechSynthesis" in window ? window.speechSynthesis : null;
+    const prepareVoices = () => synthesis && getSpeechVoices(synthesis);
+    const handleBeforeUnload = stopSpeech || (() => synthesis?.cancel());
 
+    prepareVoices();
+    if (typeof synthesis?.addEventListener === "function") {
+      synthesis.addEventListener("voiceschanged", prepareVoices);
+    }
     window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, []);
+
+    return () => {
+      if (typeof synthesis?.removeEventListener === "function") {
+        synthesis.removeEventListener("voiceschanged", prepareVoices);
+      }
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      if (speechControl?.current.replayTimer) {
+        window.clearTimeout(speechControl.current.replayTimer);
+      }
+      if (speechControl?.current.startTimer) {
+        window.clearTimeout(speechControl.current.startTimer);
+      }
+      synthesis?.cancel();
+    };
+  }, [speechControl, stopSpeech]);
 }

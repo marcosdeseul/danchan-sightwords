@@ -17,6 +17,8 @@ export default defineConfig({
         "src/app/**/*.{ts,tsx}",
         "src/api.ts",
         "src/game.ts",
+        "src/phraseForest.ts",
+        "src/PhraseForestWorld.tsx",
         "src/TreasureRewardReveal.tsx",
       ],
       reporter: ["text", "lcov"],

@@ -58,10 +58,66 @@ export interface StageContent {
   fieldTrip: FieldTripContent;
 }
 
+export type PhraseVisualContent =
+  | {
+    kind: "symbol";
+    symbol: string;
+  }
+  | {
+    kind: "location";
+    relation: string;
+    anchor: string;
+    target: string;
+  };
+
+export interface PhraseItemContent {
+  id: string;
+  text: string;
+  tokens: string[];
+  contrastKey: string;
+  meaningSafe: boolean;
+  accessibilityText: string;
+  visual: PhraseVisualContent;
+}
+
+export interface PhraseChapterContent {
+  id: "discover" | "practice" | "apply" | "prove";
+  title: string;
+  missionStart: number;
+  missionEnd: number;
+}
+
+export interface PhraseCompanionContent {
+  id: string;
+  name: string;
+  emoji: string;
+}
+
+export interface PhraseStageContent {
+  id: number;
+  title: string;
+  subtitle: string;
+  areaName: string;
+  companion: PhraseCompanionContent;
+  restoration: string;
+  intro: string;
+  missionCount: number;
+  chapters: PhraseChapterContent[];
+  practicePhrases: PhraseItemContent[];
+  checkpointPhrases: PhraseItemContent[];
+}
+
+export interface PhraseForestContent {
+  title: string;
+  subtitle: string;
+  stages: PhraseStageContent[];
+}
+
 export interface SightWordsContent {
   version: number;
   rewardAliases?: Record<string, string>;
   stages: StageContent[];
+  phraseForest?: PhraseForestContent;
 }
 
 export interface PendingReward {
@@ -88,6 +144,45 @@ export interface ProgressState {
   unlockedStageIds: number[];
   completedFieldTrips: number[];
   stages: Record<string, StageProgress>;
+  phraseForest: PhraseForestProgress;
+}
+
+export interface PhraseItemResult {
+  correct: number;
+  errors: number;
+  phraseHelp: number;
+  wordHelp: number;
+}
+
+export interface PhraseCheckpointAttempt {
+  missionId: string;
+  sessionId: string;
+  itemIds: string[];
+  hadError: boolean;
+  usedHelp: boolean;
+}
+
+export interface PhraseStageProgress {
+  currentRoundIndex: number;
+  completedMissionIds: string[];
+  completedCheckpointIds: string[];
+  checkpointSessionIds: Record<string, string>;
+  checkpointAttemptSessionIds: string[];
+  checkpointAttempt: PhraseCheckpointAttempt | null;
+  helpedItemIds: string[];
+  independentItemIds: string[];
+  itemResults: Record<string, PhraseItemResult>;
+  completed: boolean;
+  mastered: boolean;
+  restoredArea: boolean;
+  companionUnlocked: boolean;
+}
+
+export interface PhraseForestProgress {
+  activeStageId: number;
+  unlockedStageIds: number[];
+  completedStageIds: number[];
+  stages: Record<string, PhraseStageProgress>;
 }
 
 export interface User {
