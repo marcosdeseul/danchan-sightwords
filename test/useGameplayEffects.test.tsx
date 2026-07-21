@@ -2,10 +2,10 @@
 
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
-import { defaultProgress } from "../../game";
-import type { SightWordsContent, StageContent } from "../../types";
-import type { AppState } from "../state";
-import { useGameplayEffects } from "./useGameplayEffects";
+import { defaultProgress } from "../src/game";
+import type { SightWordsContent, StageContent } from "../src/types";
+import type { AppState } from "../src/app/state";
+import { useGameplayEffects } from "../src/app/hooks/useGameplayEffects";
 
 type Props = Parameters<typeof useGameplayEffects>[0];
 
