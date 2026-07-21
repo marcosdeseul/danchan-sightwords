@@ -6,10 +6,25 @@ import type {
   StageContent,
   StageProgress,
 } from "./types";
+import {
+  clearOfflineProgress,
+  clearPreviousLocalProgress,
+  offlineProgressStorageKey,
+  readJsonStorage,
+  saveOfflineProgress,
+} from "./game/storage";
 
-export const STORAGE_KEY = "danSightWords:v2";
-export const LEGACY_STORAGE_KEY = "danSightWords:v1";
-export const OFFLINE_STORAGE_PREFIX = "danSightWords:offline:v1";
+export {
+  clearOfflineProgress,
+  clearPreviousLocalProgress,
+  LEGACY_STORAGE_KEY,
+  OFFLINE_STORAGE_PREFIX,
+  offlineProgressStorageKey,
+  readJsonStorage,
+  saveOfflineProgress,
+  STORAGE_KEY,
+} from "./game/storage";
+
 export const REVIEW_PRACTICE_WEIGHT = 80;
 export const REVIEW_KNOWN_WEIGHT = 20;
 export const MAZE_LAYOUTS = Object.freeze([
@@ -34,6 +49,8 @@ export const MOVE_DELTAS = Object.freeze({
 });
 export const TRIP_TARGET = 5;
 export const LANE_TOPS = [43, 58, 73] as const;
+
+export { isOpenMazeTile } from "./game/maze";
 
 export type MoveDirection = keyof typeof MOVE_DELTAS;
 export type WordBucketName = "new" | "practice" | "known";
@@ -75,18 +92,6 @@ export function defaultStageState(stage: StageContent): StageProgress {
   };
 }
 
-export function readJsonStorage(key: string): unknown {
-  try {
-    return JSON.parse(window.localStorage.getItem(key) || "null");
-  } catch {
-    return null;
-  }
-}
-
-export function offlineProgressStorageKey(userId: number): string {
-  return `${OFFLINE_STORAGE_PREFIX}:${userId}`;
-}
-
 export function loadOfflineProgress(
   content: SightWordsContent,
   userId: number,
@@ -104,35 +109,6 @@ export function loadOfflineProgress(
   }
 
   return sanitizeProgress(content, record.progress);
-}
-
-export function saveOfflineProgress(userId: number, progress: ProgressState): boolean {
-  try {
-    window.localStorage.setItem(
-      offlineProgressStorageKey(userId),
-      JSON.stringify({ userId, progress }),
-    );
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export function clearOfflineProgress(userId: number): void {
-  try {
-    window.localStorage.removeItem(offlineProgressStorageKey(userId));
-  } catch {
-    // A successful server save is enough when browser storage is unavailable.
-  }
-}
-
-export function clearPreviousLocalProgress(): void {
-  try {
-    window.localStorage.removeItem(STORAGE_KEY);
-    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
-  } catch {
-    // Old browser data is ignored even if storage cleanup is unavailable.
-  }
 }
 
 export function progressForLegacyState(
@@ -484,16 +460,6 @@ export function currentMazeLayout(progress: ProgressState, stage: StageContent):
   const milestone = stageState.pendingReward?.milestone || 10;
   const layoutIndex = Math.max(0, Math.floor(milestone / 10) - 1) % MAZE_LAYOUTS.length;
   return MAZE_LAYOUTS[layoutIndex];
-}
-
-export function isOpenMazeTile(layout: readonly string[], position: { row: number; col: number }): boolean {
-  return (
-    position.row >= 0 &&
-    position.row < layout.length &&
-    position.col >= 0 &&
-    position.col < layout[position.row].length &&
-    layout[position.row][position.col] !== "#"
-  );
 }
 
 function cleanWordArray(value: unknown, words: string[]): string[] {

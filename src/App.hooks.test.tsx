@@ -429,7 +429,8 @@ test("internal effects clean timers and browser listeners", async () => {
 
   const cancelledHarness = await createHookHarness({ state: createState(content) });
   cancelledHarness.api.mockRejectedValueOnce(new Error("late failure"));
-  const cancelInitialize = cancelledHarness.effects[1]();
+  const cancelInitialize = cancelledHarness.effects[6]();
   cancelInitialize?.();
+  await Promise.resolve();
   await Promise.resolve();
 });

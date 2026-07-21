@@ -2,8 +2,6 @@ import { useEffect, useReducer, useRef, useState } from "react";
 import { api } from "./api";
 import { TreasureRewardReveal } from "./TreasureRewardReveal";
 import {
-  MOVE_DELTAS,
-  TRIP_TARGET,
   activeStage,
   activeStageState,
   clearOfflineProgress,
@@ -17,6 +15,7 @@ import {
 import { Icon, IconSprite } from "./icons";
 import { useCoreActions } from "./app/hooks/useCoreActions";
 import { useFieldTripFlow } from "./app/hooks/useFieldTripFlow";
+import { useGameplayEffects } from "./app/hooks/useGameplayEffects";
 import { usePersistence } from "./app/hooks/usePersistence";
 import { useSession } from "./app/hooks/useSession";
 import { useStageFlow } from "./app/hooks/useStageFlow";
@@ -176,6 +175,19 @@ export default function App() {
     stopSpeech,
     openPendingMaze,
   });
+  useGameplayEffects({
+    state,
+    stateRef,
+    inventoryOpen,
+    setInventoryOpen,
+    treasureReveal,
+    moveMaze,
+    moveFieldTrip,
+    completeFieldTrip,
+    dispatch,
+    wordCheckFeedbackTimer,
+    fieldTripDefenseTimer,
+  });
 
   useEffect(() => {
     rewardClaimInFlight.current = false;
@@ -328,112 +340,6 @@ export default function App() {
     document.body.classList.toggle("word-check-is-open", Boolean(wordCheck));
     document.body.classList.toggle("reward-reveal-is-open", Boolean(treasureReveal));
   }, [state.user, state.speaking, state.maze.open, state.fieldTrip.open, state.content, state.progress, inventoryOpen, wordCheck, treasureReveal]);
-
-  useEffect(() => () => {
-    if (wordCheckFeedbackTimer.current) {
-      window.clearTimeout(wordCheckFeedbackTimer.current);
-    }
-
-    if (fieldTripDefenseTimer.current) {
-      window.clearTimeout(fieldTripDefenseTimer.current);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!state.fieldTrip.open || state.fieldTrip.stageId === null || !state.content) {
-      return;
-    }
-
-    const stage = stageById(state.content, state.fieldTrip.stageId);
-    let frame = 0;
-    const tick = (timestamp: number) => {
-      dispatch({
-        type: "tickFieldTrip",
-        timestamp,
-        creatures: stage.fieldTrip.creatures,
-      });
-      frame = window.requestAnimationFrame(tick);
-    };
-
-    frame = window.requestAnimationFrame(tick);
-
-    return () => window.cancelAnimationFrame(frame);
-  }, [state.fieldTrip.open, state.fieldTrip.stageId, state.content]);
-
-  useEffect(() => {
-    if (
-      state.fieldTrip.open &&
-      state.fieldTrip.collected >= TRIP_TARGET
-    ) {
-      completeFieldTrip();
-    }
-  }, [state.fieldTrip.open, state.fieldTrip.collected, completeFieldTrip]);
-
-	  useEffect(() => {
-	    const handleKeyDown = (event: KeyboardEvent) => {
-	      const current = stateRef.current;
-
-	      if (!current.user) {
-	        return;
-	      }
-
-      if (treasureReveal) {
-        return;
-      }
-
-      if (inventoryOpen && event.key === "Escape") {
-        event.preventDefault();
-        setInventoryOpen(false);
-        return;
-      }
-
-	      if (current.maze.open) {
-        const directionByKey: Record<string, keyof typeof MOVE_DELTAS | undefined> = {
-          ArrowUp: "up",
-          ArrowDown: "down",
-          ArrowLeft: "left",
-          ArrowRight: "right",
-        };
-        const direction = directionByKey[event.key];
-
-        if (direction) {
-          event.preventDefault();
-          moveMaze(direction);
-        }
-        return;
-      }
-
-      if (current.fieldTrip.open) {
-        const directionByKey: Record<string, "left" | "right" | "hit" | "defend" | undefined> = {
-          ArrowLeft: "left",
-          ArrowRight: "right",
-          ArrowDown: "defend",
-          " ": "hit",
-          Enter: "hit",
-        };
-        const direction = directionByKey[event.key];
-
-        if (direction) {
-          event.preventDefault();
-          moveFieldTrip(direction);
-        }
-      }
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-	  }, [inventoryOpen, moveFieldTrip, moveMaze, treasureReveal]);
-
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      if ("speechSynthesis" in window) {
-        window.speechSynthesis.cancel();
-      }
-    };
-
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, []);
 
   const { viewModel, treasureRevealDetails } = useViewModel(state, treasureReveal);
 
