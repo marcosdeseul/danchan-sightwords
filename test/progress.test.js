@@ -291,6 +291,7 @@ test("finishing all 20 missions restores an area and unlocks the next phrase sta
   });
   assert.equal(clean.phraseForest.stages["6"].currentRoundIndex, 0);
   assert.equal(clean.phraseForest.stages["6"].completed, true);
+  assert.equal(clean.phraseForest.stages["6"].mastered, true);
   assert.equal(clean.phraseForest.stages["6"].restoredArea, true);
   assert.equal(clean.phraseForest.stages["6"].companionUnlocked, true);
   assert.equal(clean.phraseForest.stages["7"].currentRoundIndex, 2);
@@ -384,7 +385,9 @@ test("Phrase Forest sanitizes session evidence and preserves legacy completed st
       },
     },
   };
-  assert.equal(sanitizeProgress(meaningOnly).phraseForest.stages["6"].completed, false);
+  const meaningOnlyStage = sanitizeProgress(meaningOnly).phraseForest.stages["6"];
+  assert.equal(meaningOnlyStage.completed, true);
+  assert.equal(meaningOnlyStage.mastered, false);
 });
 
 test("version 5 progress gains a fresh stage 5 without losing earlier progress", () => {

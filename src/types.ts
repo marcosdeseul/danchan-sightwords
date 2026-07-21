@@ -173,6 +173,7 @@ export interface PhraseStageProgress {
   independentItemIds: string[];
   itemResults: Record<string, PhraseItemResult>;
   completed: boolean;
+  mastered: boolean;
   restoredArea: boolean;
   companionUnlocked: boolean;
 }

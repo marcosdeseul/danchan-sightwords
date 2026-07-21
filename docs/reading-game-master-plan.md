@@ -56,8 +56,9 @@ stages into one.
    Read by Myself modes.
 5. Rereading is progress. The game rewards returning to a text with less help,
    not reading faster than another child.
-6. Completion is mastery-based. A single lucky answer is not enough to finish a
-   stage; checkpoints recur on different days and use unfamiliar examples.
+6. Adventure completion and durable mastery are separate. Finishing a capstone
+   unlocks the next stage; short Daily Reading challenges collect mastery
+   evidence on later days without stopping content progression.
 7. Earlier skills remain in rotation. Each stage is mostly current-level work
    with deliberate review of earlier structures.
 8. Speed is not a gate. Accuracy, meaning, persistence, and growing independence
@@ -79,15 +80,22 @@ Each stage has four chapters:
 1. **Guided discovery:** narration, visual modeling, and direct examples.
 2. **Supported practice:** optional word help and varied manipulation activities.
 3. **Mixed application:** new structures mixed with earlier skills.
-4. **Independent checkpoints:** unfamiliar examples with minimal default support.
+4. **Capstone:** unfamiliar examples with minimal default support that complete
+   the stage adventure.
 
 Each stage ends with a capstone that uses the current reading skill to change the
-game world. Completion evidence should include:
+game world. Completing that capstone restores the area and unlocks the next
+stage. Durable mastery is tracked separately through Daily Reading and should
+include:
 
 - successful reading-related interaction;
 - evidence of understanding, such as a picture, route, order, or answer;
 - reduced help across repeated encounters; and
-- more than one successful checkpoint across separate sessions.
+- more than one successful memory challenge across separate reading days.
+
+Daily Reading appears at the beginning of a later visit, lasts roughly 30-60
+seconds, and is followed by available adventure content. A child should never
+finish one review and encounter a wait screen.
 
 No automatic child-speech score is required for the first implementation.
 Optional caregiver confirmation may supplement in-app evidence.
@@ -417,6 +425,9 @@ Conceptually, reading progress needs to record:
 
 - current world and stage;
 - completed mission and capstone identifiers;
+- separate adventure-completion and durable-mastery status;
+- Reading Stars and the reading days on which they were earned;
+- a cross-stage Daily Reading review queue;
 - comprehension-check results;
 - words or structures that frequently needed help;
 - whether narration, highlighting, or tap help was used;
@@ -442,8 +453,9 @@ users must retain all word, reward, stage, and field-trip progress.
    recurring motivations.
 8. Questions must measure meaning rather than visual test-taking tricks.
 9. Illustrations support understanding but should not make reading unnecessary.
-10. Every independent checkpoint uses fresh text rather than memorized mission
-    text.
+10. Capstones introduce held-out text. Later memory challenges use an expanded
+    held-out bank or a meaningfully changed activity or scene, rather than an
+    immediate repeat of the preceding mission.
 
 ## 17. Implementation sequence
 

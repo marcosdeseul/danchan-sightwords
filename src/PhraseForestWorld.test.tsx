@@ -5,7 +5,7 @@ import { useState } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   CompanionReward,
-  CheckpointSessionGate,
+  DailyReadingBanner,
   ForestProgressPanel,
   MeaningChoices,
   PhraseBuilder,
@@ -154,9 +154,13 @@ describe("Phrase Forest learning controls", () => {
     expect(stageProgressEmoji(99, 0)).toBe(stageProgressEmoji(6, 0));
     expect(stageProgressMessage(99, 0, "fallback")).toBe("fallback");
     expect(stageSuccessMoment(6, "my book", true, true, true).title)
-      .toBe("Independent checkpoint saved!");
+      .toBe("First Reading Star earned!");
     expect(stageSuccessMoment(6, "my book", true, true, false).title)
-      .toBe("Good practice saved");
+      .toBe("Bridge piece placed!");
+    expect(stageSuccessMoment(6, "my book", true, true, true, true).title)
+      .toBe("Reading Star earned!");
+    expect(stageSuccessMoment(6, "my book", true, true, false, true).title)
+      .toBe("Memory practice complete");
   });
 
   test("renders persistent success, session pacing, and stage mission cards", () => {
@@ -191,8 +195,10 @@ describe("Phrase Forest learning controls", () => {
     fireEvent.click(screen.getByRole("button", { name: "Continue reading" }));
     expect(continueReading).toHaveBeenCalledOnce();
 
-    rerender(<CheckpointSessionGate />);
-    expect(screen.getByRole("status")).toHaveTextContent("next fresh checkpoint");
+    rerender(<DailyReadingBanner stage={createStage(6)} stars={1} />);
+    expect(screen.getByRole("heading", { name: "Remember Two-Word Groups" }))
+      .toBeInTheDocument();
+    expect(screen.getByText(/then continue your current adventure/)).toBeInTheDocument();
   });
 
   test("offers whole-phrase and individual-word audio help", () => {
@@ -433,11 +439,11 @@ describe("Phrase Forest world", () => {
       />,
     );
 
-    expect(screen.getByText("Fresh checkpoint")).toBeInTheDocument();
+    expect(screen.getByText("Prove · Mission 16 of 20")).toBeInTheDocument();
     expect(speakText).toHaveBeenCalledTimes(2);
   });
 
-  test("paces fresh checkpoints across separate reading sessions", () => {
+  test("keeps all five Prove missions playable in one reading session", () => {
     const forest = createForest();
     const progress = createProgress(forest);
     progress.phraseForest.stages["6"].completedMissionIds = missionIds(6, 16);
@@ -447,7 +453,7 @@ describe("Phrase Forest world", () => {
     };
     progress.phraseForest.stages["6"].checkpointAttemptSessionIds = ["reading-session-1"];
 
-    const { rerender } = render(
+    render(
       <PhraseForestWorld
         content={forest}
         progress={progress}
@@ -457,21 +463,130 @@ describe("Phrase Forest world", () => {
         commitProgress={(next) => next}
       />,
     );
-    expect(screen.getByText("Checkpoint saved for this reading session")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Hear the whole phrase" })).not.toBeInTheDocument();
-
-    rerender(
-      <PhraseForestWorld
-        content={forest}
-        progress={progress}
-        sessionId="reading-session-2"
-        speechNotice=""
-        speakText={() => true}
-        commitProgress={(next) => next}
-      />,
-    );
-    expect(screen.queryByText("Checkpoint saved for this reading session")).not.toBeInTheDocument();
+    expect(screen.getByText("Prove · Mission 17 of 20")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Hear the whole phrase" })).toBeInTheDocument();
+  });
+
+  test("starts a later visit with Daily Reading and then returns to new content", () => {
+    const forest = createForest();
+    const initial = createProgress(forest);
+    initial.phraseForest.activeStageId = 7;
+    initial.phraseForest.unlockedStageIds = [6, 7];
+    initial.phraseForest.completedStageIds = [6];
+    initial.phraseForest.stages["6"] = {
+      ...defaultPhraseStageProgress(),
+      completedMissionIds: missionIds(6, 20),
+      completedCheckpointIds: [phraseMissionId(6, 15)],
+      checkpointSessionIds: { [phraseMissionId(6, 15)]: "reading-day-1" },
+      checkpointAttemptSessionIds: ["reading-day-1"],
+      completed: true,
+      restoredArea: true,
+      companionUnlocked: true,
+    };
+
+    function Harness() {
+      const [progress, setProgress] = useState(initial);
+      return (
+        <PhraseForestWorld
+          content={forest}
+          progress={progress}
+          sessionId="reading-day-2"
+          speechNotice=""
+          speakText={() => true}
+          commitProgress={(next) => {
+            setProgress(next);
+            return next;
+          }}
+        />
+      );
+    }
+
+    render(<Harness />);
+    expect(screen.getByRole("heading", { name: "Remember Two-Word Groups" }))
+      .toBeInTheDocument();
+    expect(screen.getByText("Daily Reading · Stage 6")).toBeInTheDocument();
+    expect(screen.getByText("Memory challenge")).toBeInTheDocument();
+
+    const stage = forest.stages[0];
+    const reviewItems = stage.checkpointPhrases.slice(3, 6);
+    reviewItems.forEach((reviewItem, index) => {
+      const choices = meaningChoicesForItem(stage, reviewItem);
+      const targetIndex = choices.findIndex((choice) => choice.id === reviewItem.id);
+      fireEvent.click(screen.getByRole("button", {
+        name: new RegExp(`Scene option ${targetIndex + 1}:`),
+      }));
+      if (index < reviewItems.length - 1) {
+        fireEvent.click(screen.getByRole("button", { name: "Continue reading" }));
+      }
+    });
+
+    expect(screen.getByRole("heading", { name: "Reading Star earned!" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Continue reading" }));
+    expect(screen.getByText("Discover · Mission 1 of 20")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Stage 7/ })).toHaveClass("is-active");
+  });
+
+  test("continues from a completed Stage 6 replay to the unlocked Stage 7 adventure", () => {
+    const forest = createForest();
+    const initial = createProgress(forest);
+    initial.phraseForest.unlockedStageIds = [6, 7];
+    initial.phraseForest.completedStageIds = [6];
+    initial.phraseForest.stages["6"] = {
+      ...defaultPhraseStageProgress(),
+      completedMissionIds: missionIds(6, 20),
+      completedCheckpointIds: [
+        phraseMissionId(6, 15),
+        phraseMissionId(6, 16),
+        phraseMissionId(6, 17),
+      ],
+      checkpointSessionIds: {
+        [phraseMissionId(6, 15)]: "reading-day-1",
+        [phraseMissionId(6, 16)]: "reading-day-2",
+        [phraseMissionId(6, 17)]: "reading-day-3",
+      },
+      checkpointAttemptSessionIds: [
+        "reading-day-1",
+        "reading-day-2",
+        "reading-day-3",
+      ],
+      completed: true,
+      mastered: true,
+      restoredArea: true,
+      companionUnlocked: true,
+    };
+
+    function Harness() {
+      const [progress, setProgress] = useState(initial);
+      return (
+        <PhraseForestWorld
+          content={forest}
+          progress={progress}
+          sessionId="reading-day-3"
+          speechNotice=""
+          speakText={() => true}
+          commitProgress={(next) => {
+            setProgress(next);
+            return next;
+          }}
+        />
+      );
+    }
+
+    render(<Harness />);
+    const stage = forest.stages[0];
+    const target = stage.checkpointPhrases[12];
+    const choices = meaningChoicesForItem(stage, target);
+    const targetIndex = choices.findIndex((choice) => choice.id === target.id);
+
+    fireEvent.click(screen.getByRole("button", {
+      name: new RegExp(`Scene option ${targetIndex + 1}:`),
+    }));
+    expect(screen.getByRole("heading", { name: "Bridge piece placed!" }))
+      .toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Continue reading" }));
+    expect(screen.getByText("Discover · Mission 1 of 20")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Stage 7/ })).toHaveClass("is-active");
   });
 
   test("records gentle correction and help, then advances after understanding", () => {
@@ -564,7 +679,7 @@ describe("Phrase Forest world", () => {
     expect(screen.getByRole("heading", { name: "Build the supply label" })).toBeInTheDocument();
   });
 
-  test("keeps a supported checkpoint as practice and closes the session", () => {
+  test("keeps a supported Prove mission as practice and continues the capstone", () => {
     const forest = createForest();
     const initial = createProgress(forest);
     const stage = forest.stages[0];
@@ -603,10 +718,10 @@ describe("Phrase Forest world", () => {
       .forEach((button) => fireEvent.click(button));
     expect(screen.getByText(/Almost\. Listen to the complete phrase/)).toBeInTheDocument();
     item.tokens.forEach((token) => fireEvent.click(screen.getByRole("button", { name: token })));
-    expect(screen.getByRole("heading", { name: "Good practice saved" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Bridge piece placed!" })).toBeInTheDocument();
     expect(screen.getByText("Speech help is ready.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Continue reading" }));
-    expect(screen.getByText("Checkpoint saved for this reading session")).toBeInTheDocument();
+    expect(screen.getByText("Prove · Mission 17 of 20")).toBeInTheDocument();
   });
 
   test("restores the area, unlocks its companion, and continues to the next stage", () => {
@@ -724,7 +839,7 @@ describe("Phrase Forest world", () => {
     fireEvent.click(screen.getByRole("button", {
       name: new RegExp(`Scene option ${targetIndex + 1}:`),
     }));
-    fireEvent.click(screen.getByRole("button", { name: "Continue the trail" }));
+    fireEvent.click(screen.getByRole("button", { name: "See the restored forest" }));
 
     expect(screen.getByRole("button", { name: /Stage 6/ })).toHaveClass("is-active");
     expect(screen.getByRole("button", { name: /Stage 7/ })).toBeDisabled();

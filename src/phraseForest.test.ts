@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   activityForPhraseItem,
   advancePhraseRound,
-  checkpointBlockedForSession,
+  advancePhraseReviewRound,
   currentPhraseMissionIndex,
   defaultPhraseForestProgress,
   defaultPhraseStageProgress,
@@ -11,6 +11,8 @@ import {
   phraseCheckpointStatus,
   phraseMissionForStage,
   phraseMissionId,
+  phraseReviewMissionForStage,
+  phraseReviewRoundIndex,
   recordPhraseEvidence,
   sanitizePhraseForestProgress,
   sanitizePhraseStageProgress,
@@ -380,11 +382,7 @@ describe("Phrase Forest missions", () => {
     );
     expect(checkpointResult.stageState.completedCheckpointIds).toEqual([phraseMissionId(6, 15)]);
     expect(checkpointResult.checkpointQualified).toBe(true);
-    expect(checkpointBlockedForSession(
-      checkpointResult.stageState,
-      phraseMissionForStage(stage, 16),
-      "session-1",
-    )).toBe(true);
+    expect(currentPhraseMissionIndex(checkpointResult.stageState, 6)).toBe(16);
 
     const endStage = defaultPhraseStageProgress();
     endStage.completedMissionIds = missionIds(6, 19);
@@ -410,6 +408,7 @@ describe("Phrase Forest missions", () => {
     expect(capstoneResult).toMatchObject({ missionCompleted: true, stageCompleted: true });
     expect(capstoneResult.stageState).toMatchObject({
       completed: true,
+      mastered: true,
       restoredArea: true,
       companionUnlocked: true,
       currentRoundIndex: 0,
@@ -443,26 +442,47 @@ describe("Phrase Forest missions", () => {
     expect(supportedResult.stageState.completedCheckpointIds).toEqual([]);
     expect(supportedResult.stageState.completed).toBe(false);
 
-    const retry = defaultPhraseStageProgress();
-    retry.completedMissionIds = missionIds(6, 20);
-    retry.currentRoundIndex = 2;
-    retry.checkpointAttemptSessionIds = ["retry-session"];
-    retry.checkpointAttempt = {
-      missionId: phraseMissionId(6, 15),
-      sessionId: "retry-session",
-      itemIds: stage.checkpointPhrases.slice(0, 2).map((item) => item.id),
+  });
+
+  test("completes the adventure before durable mastery and schedules one daily review", () => {
+    const stage = createStage(6);
+    const state = defaultPhraseStageProgress();
+    state.completedMissionIds = missionIds(6, 19);
+    state.currentRoundIndex = 2;
+    state.checkpointAttemptSessionIds = ["day-1"];
+    state.completedCheckpointIds = [phraseMissionId(6, 15)];
+    state.checkpointSessionIds = { [phraseMissionId(6, 15)]: "day-1" };
+    state.checkpointAttempt = {
+      missionId: phraseMissionId(6, 19),
+      sessionId: "day-1",
+      itemIds: stage.checkpointPhrases.slice(12, 14).map((item) => item.id),
       hadError: false,
       usedHelp: false,
     };
-    const retried = advancePhraseRound(
+
+    const capstone = advancePhraseRound(
       stage,
-      retry,
-      stage.checkpointPhrases[2].id,
-      "retry-session",
+      state,
+      stage.checkpointPhrases[14].id,
+      "day-1",
     );
-    expect(retried.stageState.completedMissionIds).toHaveLength(20);
-    expect(retried.stageState.completedCheckpointIds).toEqual([phraseMissionId(6, 15)]);
-    expect(retried.stageState.checkpointAttemptSessionIds).toEqual(["retry-session"]);
+    expect(capstone.stageState).toMatchObject({ completed: true, mastered: false });
+    expect(phraseReviewMissionForStage(stage, capstone.stageState, "day-1")).toBeNull();
+
+    const review = phraseReviewMissionForStage(stage, capstone.stageState, "day-2");
+    expect(review?.number).toBe(17);
+    expect(phraseReviewRoundIndex(capstone.stageState, review!, "day-2")).toBe(0);
+
+    let reviewState = capstone.stageState;
+    review!.items.forEach((reviewItem, index) => {
+      const result = advancePhraseReviewRound(stage, reviewState, review!, reviewItem.id, "day-2");
+      reviewState = result.stageState;
+      expect(result.missionCompleted).toBe(index === review!.items.length - 1);
+    });
+    expect(reviewState.completedCheckpointIds).toContain(review!.id);
+    expect(reviewState.completed).toBe(true);
+    expect(reviewState.mastered).toBe(false);
+    expect(phraseReviewMissionForStage(stage, reviewState, "day-2")).toBeNull();
   });
 
   test("sanitizes a phrase stage independently", () => {

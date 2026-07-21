@@ -11,8 +11,8 @@ Implementation note (2026-07-21): the shared content model, 375 validated
 phrases, 100 core missions, world navigation, phrase matching and building,
 Discover modeling, accessible scene descriptions, item-level evidence,
 persistent success feedback, stage-specific mission presentation, progressive
-forest restoration, five companion rewards, and independent checkpoints paced
-across separate reading sessions are implemented. Child playtesting should now
+forest restoration, five companion rewards, uninterrupted capstones, separate
+Reading Stars, and a Daily Reading warm-up are implemented. Child playtesting should now
 guide the next delivery pass: editorial phrase review, richer authored
 illustration and animation assets, adaptive review insertion, and cadence
 tuning.
@@ -63,12 +63,22 @@ Adaptive review missions may be inserted without changing the stage number.
 | Discover | 1-5 | Automatic modeling and strong visual support | Establish the new phrase relationship |
 | Practice | 6-10 | Help available on request | Read, match, and construct varied examples |
 | Apply | 11-15 | No automatic audio; mixed prior-stage review | Use the phrase to change the forest world |
-| Prove | 16-20 | Minimal default support and fresh examples | Demonstrate understanding across separate sessions |
+| Prove | 16-20 | Minimal default support and held-out examples | Complete one uninterrupted stage capstone |
 
-A child is not expected to finish a stage in one sitting. The product should
-spread independent checkpoints across at least three separate reading sessions.
-Mission length should target a short, focused child session rather than a fixed
-number of minutes.
+A child is not expected to finish a stage in one sitting, but Missions 16-20
+must remain playable without a session gate. Mission 20 completes the adventure,
+restores the area, awards the companion, and unlocks the next stage. Durable
+mastery continues through Daily Reading on later days.
+
+Daily Reading presents at most one three-item memory challenge at the start of a
+reading day. After it, the child returns to the next unfinished adventure. A
+supported attempt is useful practice and is rescheduled without blocking new
+content.
+
+The current vertical slice revisits an unqualified held-out Prove set after a
+different reading day. Before production expansion, enlarge the review bank or
+change its scene or activity so later mastery checks are not exact mission
+repeats.
 
 Each stage needs an authored bank of at least:
 
@@ -128,8 +138,8 @@ phrase and highlights it as one unit. It does not bounce through words in a way
 that encourages isolated reading.
 
 Stage 6 is the onboarding exception: every guided phrase in Discover, Practice,
-and Apply is read aloud as soon as it appears. Fresh Prove checkpoints remain
-silent so that independent mastery evidence stays valid.
+and Apply is read aloud as soon as it appears. Prove and Daily Reading remain
+silent by default so independent evidence stays valid.
 
 ### Meaning match
 
@@ -160,7 +170,7 @@ understood.
 - Play Phrase reads the complete phrase naturally.
 - Tapping one word reads only that word and briefly highlights it.
 - Help use is recorded for support planning but never shown as a penalty.
-- Independent checkpoints do not autoplay audio, but help remains available.
+- Prove and Daily Reading do not autoplay audio, but help remains available.
 
 ### Reread
 
@@ -170,23 +180,24 @@ not by beating a timer.
 
 ## 6. Mastery evidence
 
-Stage readiness is based on three evidence categories:
+Durable mastery is based on three evidence categories:
 
 1. **Construction:** Can the child place familiar words into the intended phrase?
 2. **Meaning:** Can the child connect a fresh phrase to the correct scene or action?
 3. **Independence:** Does the child use less automatic or requested support across
    several encounters?
 
-The first implementation should use a transparent readiness rule:
+The first implementation uses two transparent progress layers:
 
-- complete the four stage chapters;
-- complete three fresh checkpoint missions across separate sessions;
-- demonstrate both construction and meaning in those checkpoints; and
-- finish the stage capstone.
+- **Adventure complete:** finish all four chapters and Mission 20. This restores
+  the area, awards the companion, and unlocks the next stage.
+- **Durably mastered:** earn three Reading Stars on separate reading days and
+  demonstrate both construction and meaning across those challenges.
 
-If the child uses help or answers incorrectly, the checkpoint remains practice
-and a different fresh checkpoint is scheduled later. There is no visible fail
-state and no time limit.
+The first independent Prove result may earn Reading Star 1. Later stars come
+from Daily Reading. If the child uses help or answers incorrectly, the challenge
+remains practice and returns on another day. There is no visible fail state,
+time limit, disabled numbered mission, or session-ending wait screen.
 
 Exact accuracy thresholds should be established through child playtesting. The
 system should store item-level evidence so a future threshold change does not
@@ -516,6 +527,10 @@ Previously difficult phrases should return after other items have intervened.
 Immediate repetition may be used for explanation, but it should not count as
 independent evidence.
 
+Daily Reading is global across Phrase Forest: only one prior-stage challenge is
+served per reading day, even when several stages need review. Completing the
+warm-up always hands the child back to the next unfinished stage.
+
 ## 13. Content and accessibility requirements
 
 - All Stage 6-10 production words must come from the existing 1,000-word list.
@@ -618,8 +633,11 @@ systems needed by the rest of Phrase Forest.
 ## 17. Decisions fixed by this plan
 
 - Stages 6-10 remain five distinct stages.
-- Each stage contains 20 core missions plus adaptive review.
-- Each stage uses four chapters and checkpoints across separate sessions.
+- Each stage contains 20 uninterrupted core missions plus adaptive review.
+- Mission 20 completes the adventure and unlocks the next stage.
+- Durable mastery is tracked separately with three Reading Stars across
+  different reading days.
+- Daily Reading runs before new content and never becomes a wait screen.
 - Checkpoint phrases are held out from guided practice.
 - Stage 6-10 words come only from the existing 1,000-word foundation.
 - Phrase understanding is demonstrated through meaning and construction, not

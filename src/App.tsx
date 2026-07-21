@@ -53,8 +53,12 @@ import type {
 import type { WordCheckFeedback, WordCheckState } from "./app/wordCheck";
 import type { TripCreature } from "./app/fieldTrip";
 
-const PHRASE_READING_SESSION_ID =
-  `phrase-session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+export function phraseReadingDayId(date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `phrase-reading-day-${year}-${month}-${day}`;
+}
 
 export { initialState, reducer };
 export {
@@ -83,6 +87,7 @@ export default function App() {
   const [wordCheck, setWordCheck] = useState<WordCheckState | null>(null);
   const [wordCheckFeedback, setWordCheckFeedback] = useState<WordCheckFeedback | null>(null);
   const [treasureReveal, setTreasureReveal] = useState<TreasureRevealState | null>(null);
+  const [readingDayOffset, setReadingDayOffset] = useState(0);
   const stateRef = useRef(state);
   const autoAdvanceTimer = useRef<number>(0);
   const queuedProgress = useRef<ProgressState | null>(null);
@@ -500,6 +505,9 @@ export default function App() {
       (candidate) => candidate.id === state.progress!.phraseForest.activeStageId,
     )!
     : null;
+  const readingDay = new Date();
+  readingDay.setDate(readingDay.getDate() + readingDayOffset);
+  const phraseReadingSessionId = phraseReadingDayId(readingDay);
 
   const switchWorld = (world: "words" | "phrases") => {
     clearAutoAdvance();
@@ -562,10 +570,13 @@ export default function App() {
           <PhraseForestWorld
             content={state.content.phraseForest}
             progress={state.progress}
-            sessionId={PHRASE_READING_SESSION_ID}
+            sessionId={phraseReadingSessionId}
             speechNotice={state.speechNotice}
             commitProgress={commitProgress}
             speakText={speakWord}
+            onStartNextReadingDay={import.meta.env.DEV
+              ? () => setReadingDayOffset((offset) => offset + 1)
+              : undefined}
           />
         ) : (
           <>

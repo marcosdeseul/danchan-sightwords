@@ -8,12 +8,14 @@ import { cloneProgress } from "./game";
 import {
   activityForPhraseItem,
   advancePhraseRound,
-  checkpointBlockedForSession,
+  advancePhraseReviewRound,
   currentPhraseMissionIndex,
   meaningChoicesForItem,
   phraseCheckpointStatus,
   phraseChapterProgress,
   phraseMissionForStage,
+  phraseReviewMissionForStage,
+  phraseReviewRoundIndex,
   recordPhraseEvidence,
   shuffledPhraseTokens,
 } from "./phraseForest";
@@ -32,6 +34,7 @@ export function PhraseForestWorld({
   speechNotice,
   commitProgress,
   speakText,
+  onStartNextReadingDay,
 }: {
   content: PhraseForestContent;
   progress: ProgressState;
@@ -39,23 +42,43 @@ export function PhraseForestWorld({
   speechNotice: string;
   commitProgress: (progress: ProgressState) => ProgressState | null;
   speakText: (text: string, options?: { clearAutoAdvance?: boolean }) => boolean;
+  onStartNextReadingDay?: () => void;
 }) {
   const activeStage = content.stages.find(
     (stage) => stage.id === progress.phraseForest.activeStageId,
   ) || content.stages[0];
-  const stageState = progress.phraseForest.stages[String(activeStage.id)];
-  const missionIndex = currentPhraseMissionIndex(stageState, activeStage.id);
-  const mission = phraseMissionForStage(activeStage, missionIndex);
-  const item = mission.items[stageState.currentRoundIndex] || mission.items[0];
+  const activeStageState = progress.phraseForest.stages[String(activeStage.id)];
+  const dailyReviewAlreadyCompleted = content.stages.some((stage) =>
+    progress.phraseForest.stages[String(stage.id)]
+      .checkpointAttemptSessionIds.includes(sessionId)
+  );
+  const dailyReview = dailyReviewAlreadyCompleted
+    ? null
+    : content.stages.map((stage) => {
+      const state = progress.phraseForest.stages[String(stage.id)];
+      const mission = phraseReviewMissionForStage(stage, state, sessionId);
+      return mission ? { stage, state, mission } : null;
+    }).find((candidate) => candidate !== null) || null;
+  const playStage = dailyReview?.stage || activeStage;
+  const stageState = dailyReview?.state || activeStageState;
+  const missionIndex = dailyReview
+    ? dailyReview.mission.index
+    : currentPhraseMissionIndex(stageState, playStage.id);
+  const mission = dailyReview?.mission || phraseMissionForStage(playStage, missionIndex);
+  const roundIndex = dailyReview
+    ? phraseReviewRoundIndex(stageState, mission, sessionId)
+    : stageState.currentRoundIndex;
+  const item = mission.items[roundIndex] || mission.items[0];
   const activity = activityForPhraseItem(mission, item);
   const [selectedTokenIds, setSelectedTokenIds] = useState<string[]>([]);
   const [feedback, setFeedback] = useState("");
   const [advancing, setAdvancing] = useState(false);
   const [rewardStageId, setRewardStageId] = useState<number | null>(null);
+  const [rewardNextStageId, setRewardNextStageId] = useState<number | null>(null);
   const [successMoment, setSuccessMoment] = useState<PhraseSuccessMoment | null>(null);
+  const [completedDailyReview, setCompletedDailyReview] = useState(false);
   const lastModeledItemId = useRef("");
-  const checkpointBlocked = checkpointBlockedForSession(stageState, mission, sessionId);
-  const presentation = stageMissionPresentation(activeStage.id, activity);
+  const presentation = stageMissionPresentation(playStage.id, activity);
 
   useEffect(() => {
     setSelectedTokenIds([]);
@@ -68,13 +91,12 @@ export function PhraseForestWorld({
   }, [activeStage.id]);
 
   useEffect(() => {
-    const shouldAutoModel = !mission.checkpoint && (
-      activeStage.id === 6 || mission.chapterId === "discover"
+    const shouldAutoModel = !dailyReview && !mission.checkpoint && (
+      playStage.id === 6 || mission.chapterId === "discover"
     );
 
     if (
       shouldAutoModel &&
-      !checkpointBlocked &&
       !successMoment &&
       lastModeledItemId.current !== item.id
     ) {
@@ -82,18 +104,18 @@ export function PhraseForestWorld({
       speakText(item.text, { clearAutoAdvance: false });
     }
   }, [
-    activeStage.id,
-    checkpointBlocked,
+    dailyReview,
     item.id,
     mission.chapterId,
     mission.checkpoint,
+    playStage.id,
     successMoment,
     speakText,
   ]);
 
   const choices = useMemo(
-    () => meaningChoicesForItem(activeStage, item),
-    [activeStage, item],
+    () => meaningChoicesForItem(playStage, item),
+    [playStage, item],
   );
   const tokens = useMemo(() => shuffledPhraseTokens(item), [item]);
   const selectedTokens = selectedTokenIds.map((tokenId) =>
@@ -105,7 +127,7 @@ export function PhraseForestWorld({
 
   const updateStageProgress = (
     nextStageState: PhraseStageProgress,
-    stageId = activeStage.id,
+    stageId = playStage.id,
   ) => {
     const nextProgress = cloneProgress(progress);
     nextProgress.phraseForest.stages[String(stageId)] = nextStageState;
@@ -135,7 +157,9 @@ export function PhraseForestWorld({
   const completeCurrentRound = () => {
     setAdvancing(true);
     const completedText = item.text;
-    const result = advancePhraseRound(activeStage, stageState, item.id, sessionId);
+    const result = dailyReview
+      ? advancePhraseReviewRound(playStage, stageState, mission, item.id, sessionId)
+      : advancePhraseRound(playStage, stageState, item.id, sessionId);
     const saved = updateStageProgress(result.stageState);
 
     if (!saved) {
@@ -143,20 +167,30 @@ export function PhraseForestWorld({
       return;
     }
 
-    if (result.stageCompleted) {
-      setRewardStageId(activeStage.id);
-      setFeedback(`${activeStage.restoration} restored!`);
+    if (!dailyReview && !stageState.completed && result.stageCompleted) {
+      setRewardStageId(playStage.id);
+      const nextStage = content.stages.find((candidate) => candidate.id === playStage.id + 1);
+      setRewardNextStageId(
+        nextStage && saved.phraseForest.unlockedStageIds.includes(nextStage.id)
+          ? nextStage.id
+          : null,
+      );
+      setFeedback(`${playStage.restoration} restored!`);
       return;
     }
 
     setAdvancing(false);
     const moment = stageSuccessMoment(
-      activeStage.id,
+      playStage.id,
       completedText,
       result.missionCompleted,
       mission.checkpoint,
       result.checkpointQualified,
+      Boolean(dailyReview),
     );
+    if (dailyReview && result.missionCompleted) {
+      setCompletedDailyReview(true);
+    }
     setSuccessMoment(moment);
     setFeedback(moment.message);
   };
@@ -197,11 +231,11 @@ export function PhraseForestWorld({
   };
 
   const continueAfterReward = () => {
-    const nextStage = content.stages.find((stage) => stage.id === activeStage.id + 1);
     setRewardStageId(null);
-
-    if (nextStage && progress.phraseForest.unlockedStageIds.includes(nextStage.id)) {
-      selectStage(nextStage.id);
+    if (rewardNextStageId !== null) {
+      const nextStageId = rewardNextStageId;
+      setRewardNextStageId(null);
+      selectStage(nextStageId);
     }
   };
 
@@ -214,32 +248,41 @@ export function PhraseForestWorld({
       />
 
       <PhraseScoreStrip
-        stage={activeStage}
+        stage={playStage}
         stageState={stageState}
         completedAreas={progress.phraseForest.completedStageIds.length}
       />
 
+      {dailyReview && (
+        <DailyReadingBanner
+          stage={playStage}
+          stars={phraseCheckpointStatus(playStage.id, stageState).qualified}
+        />
+      )}
+
       <main className="phrase-layout">
         <section
-          className={`phrase-mission-panel phrase-world-stage-${activeStage.id}`}
+          className={`phrase-mission-panel phrase-world-stage-${playStage.id}`}
           aria-labelledby="phraseMissionTitle"
         >
           <div className="phrase-mission-heading">
             <div>
-              <p>{mission.chapterTitle} · Mission {mission.number} of {activeStage.missionCount}</p>
+              <p>{dailyReview
+                ? `Daily Reading · ${playStage.title}`
+                : `${mission.chapterTitle} · Mission ${mission.number} of ${playStage.missionCount}`}</p>
               <h2 id="phraseMissionTitle">
                 {presentation.heading}
               </h2>
             </div>
             <span className={`phrase-mode-badge is-${mission.chapterId}`}>
-              {mission.checkpoint ? "Fresh checkpoint" : mission.chapterTitle}
+              {dailyReview ? "Memory challenge" : mission.chapterTitle}
             </span>
           </div>
 
           <StageWorldMission
-            stageId={activeStage.id}
+            stageId={playStage.id}
             instruction={presentation.instruction}
-            missionRound={stageState.currentRoundIndex + 1}
+            missionRound={roundIndex + 1}
             missionRounds={mission.items.length}
           />
 
@@ -249,10 +292,18 @@ export function PhraseForestWorld({
               onContinue={() => {
                 setSuccessMoment(null);
                 setFeedback("");
+                if (completedDailyReview) {
+                  setCompletedDailyReview(false);
+                }
+                const nextAdventure = content.stages.find((candidate) =>
+                  progress.phraseForest.unlockedStageIds.includes(candidate.id) &&
+                  !progress.phraseForest.stages[String(candidate.id)].completed
+                );
+                if (nextAdventure && nextAdventure.id !== activeStage.id) {
+                  selectStage(nextAdventure.id);
+                }
               }}
             />
-          ) : checkpointBlocked ? (
-            <CheckpointSessionGate />
           ) : (
             <>
               <PhrasePrompt
@@ -266,7 +317,7 @@ export function PhraseForestWorld({
                   choices={choices}
                   disabled={advancing}
                   onChoose={chooseScene}
-                  stageId={activeStage.id}
+                  stageId={playStage.id}
                 />
               ) : (
                 <PhraseBuilder
@@ -288,8 +339,8 @@ export function PhraseForestWorld({
               <span
                 key={roundItem.id}
                 className={[
-                  index < stageState.currentRoundIndex ? "is-complete" : "",
-                  index === stageState.currentRoundIndex ? "is-current" : "",
+                  index < roundIndex ? "is-complete" : "",
+                  index === roundIndex ? "is-current" : "",
                 ].filter(Boolean).join(" ")}
               >
                 <span className="sr-only">Round {index + 1}</span>
@@ -297,7 +348,7 @@ export function PhraseForestWorld({
             ))}
           </div>
 
-          {!successMoment && !checkpointBlocked && (
+          {!successMoment && (
             <p className="phrase-feedback" role="status" aria-live="polite" aria-atomic="true">
               {feedback || "Read every word. Help is always available."}
             </p>
@@ -307,19 +358,28 @@ export function PhraseForestWorld({
 
         <ForestProgressPanel
           content={content}
-          stage={activeStage}
+          stage={playStage}
           stageState={stageState}
           missionIndex={missionIndex}
           completedStageIds={progress.phraseForest.completedStageIds}
         />
       </main>
 
+      {onStartNextReadingDay && !dailyReview && progress.phraseForest.completedStageIds.length > 0 && (
+        <button className="reading-day-test-button" type="button" onClick={onStartNextReadingDay}>
+          Test next reading day
+        </button>
+      )}
+
       {rewardStage && (
         <CompanionReward
           stage={rewardStage}
-          hasNextStage={Boolean(content.stages.find((stage) => stage.id === rewardStage.id + 1))}
+          hasNextStage={rewardNextStageId !== null}
           onContinue={continueAfterReward}
-          onStay={() => setRewardStageId(null)}
+          onStay={() => {
+            setRewardStageId(null);
+            setRewardNextStageId(null);
+          }}
         />
       )}
     </div>
@@ -340,6 +400,7 @@ export function PhraseStageTabs({
       {content.stages.map((stage) => {
         const state = progress.phraseForest.stages[String(stage.id)];
         const unlocked = progress.phraseForest.unlockedStageIds.includes(stage.id);
+        const stars = phraseCheckpointStatus(stage.id, state).qualified;
         return (
           <button
             type="button"
@@ -355,7 +416,7 @@ export function PhraseStageTabs({
               <strong>{stage.title}</strong>
               <small>{stage.subtitle}</small>
             </span>
-            <em>{state.completedMissionIds.length}/{stage.missionCount}</em>
+            <em>{state.completedMissionIds.length}/{stage.missionCount} · ⭐ {stars}/3</em>
           </button>
         );
       })}
@@ -375,12 +436,14 @@ export function PhraseScoreStrip({
   const missionIndex = currentPhraseMissionIndex(stageState, stage.id);
   const mission = phraseMissionForStage(stage, missionIndex);
   const checkpointStatus = phraseCheckpointStatus(stage.id, stageState);
+  const chapterTitle = stageState.completed ? "Complete" : mission.chapterTitle;
+  const chapterPath = stageState.completed ? "5/5" : `${phraseChapterProgress(missionIndex)}/5`;
   return (
     <div className="score-strip phrase-score-strip" aria-label="Phrase Forest progress summary">
       <div className="metric"><strong>{stageState.completedMissionIds.length}</strong><span>Missions</span></div>
-      <div className="metric"><strong>{mission.chapterTitle}</strong><span>Chapter</span></div>
-      <div className="metric"><strong>{phraseChapterProgress(missionIndex)}/5</strong><span>Chapter path</span></div>
-      <div className="metric"><strong>{checkpointStatus.qualified}/{checkpointStatus.required}</strong><span>Independent</span></div>
+      <div className="metric"><strong>{chapterTitle}</strong><span>Adventure</span></div>
+      <div className="metric"><strong>{chapterPath}</strong><span>Chapter path</span></div>
+      <div className="metric"><strong>⭐ {checkpointStatus.qualified}/{checkpointStatus.required}</strong><span>Reading stars</span></div>
       <div className="metric"><strong>{completedAreas}</strong><span>Areas restored</span></div>
     </div>
   );
@@ -473,19 +536,28 @@ export function stageSuccessMoment(
   missionCompleted: boolean,
   checkpoint: boolean,
   checkpointQualified: boolean,
+  dailyReview = false,
 ): PhraseSuccessMoment {
-  if (checkpoint && missionCompleted) {
+  if (dailyReview && checkpoint && missionCompleted) {
     return checkpointQualified
       ? {
-        emoji: "✨",
-        title: "Independent checkpoint saved!",
-        message: `You read “${phrase}” without help. This checkpoint counts.`,
+        emoji: "⭐",
+        title: "Reading Star earned!",
+        message: `You remembered “${phrase}” all by yourself. Now your adventure continues!`,
       }
       : {
         emoji: "🌱",
-        title: "Good practice saved",
-        message: "This supported checkpoint stays as practice. A fresh checkpoint will return later.",
+        title: "Memory practice complete",
+        message: "Help made this good practice. These phrases will visit again another day.",
       };
+  }
+
+  if (checkpoint && missionCompleted && checkpointQualified) {
+    return {
+      emoji: "⭐",
+      title: "First Reading Star earned!",
+      message: `You read “${phrase}” independently. Keep crossing the bridge!`,
+    };
   }
 
   const presentation = STAGE_MISSION_PRESENTATIONS[stageId] || STAGE_MISSION_PRESENTATIONS[6];
@@ -537,15 +609,21 @@ export function PhraseSuccessCard({
   );
 }
 
-export function CheckpointSessionGate() {
+export function DailyReadingBanner({
+  stage,
+  stars,
+}: {
+  stage: PhraseStageContent;
+  stars: number;
+}) {
   return (
-    <section className="checkpoint-session-gate" role="status" aria-live="polite">
-      <span aria-hidden="true">🌙</span>
-      <h3>Checkpoint saved for this reading session</h3>
-      <p>
-        Great focused reading. The next fresh checkpoint opens when you come back
-        for another reading session.
-      </p>
+    <section className="daily-reading-banner" aria-labelledby="dailyReadingTitle">
+      <span aria-hidden="true">🌅</span>
+      <div>
+        <p>Today’s warm-up · ⭐ {stars}/3</p>
+        <h2 id="dailyReadingTitle">Remember {stage.subtitle}</h2>
+        <span>Finish this quick memory challenge, then continue your current adventure.</span>
+      </div>
     </section>
   );
 }

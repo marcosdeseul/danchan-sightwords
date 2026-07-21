@@ -79,6 +79,7 @@ export function defaultPhraseStageProgress(): PhraseStageProgress {
     independentItemIds: [],
     itemResults: {},
     completed: false,
+    mastered: false,
     restoredArea: false,
     companionUnlocked: false,
   };
@@ -178,7 +179,8 @@ export function sanitizePhraseStageProgress(
     completedCheckpointIds,
     checkpointSessionIds,
   };
-  const completed = phraseCheckpointStatus(stage.id, partialState).ready;
+  const completed = completedMissionIds.length >= PHRASE_MISSION_COUNT;
+  const mastered = phraseCheckpointStatus(stage.id, partialState).ready;
   const currentMissionIndex = currentPhraseMissionIndex(partialState, stage.id);
   const maxRoundIndex = currentMissionIndex < PHRASE_CHECKPOINT_START - 1 ? 3 : 2;
 
@@ -199,6 +201,7 @@ export function sanitizePhraseStageProgress(
     independentItemIds,
     itemResults,
     completed,
+    mastered,
     restoredArea: completed,
     companionUnlocked: completed,
   };
@@ -278,26 +281,60 @@ export function phraseMissionId(stageId: number, missionIndex: number): string {
 
 export function currentPhraseMissionIndex(
   stageState: PhraseStageProgress,
-  stageId?: number,
+  _stageId?: number,
 ): number {
-  if (
-    stageId !== undefined &&
-    stageState.completedMissionIds.length >= PHRASE_MISSION_COUNT &&
-    !stageState.completed
-  ) {
-    const firstUnqualified = Array.from(
-      { length: PHRASE_MISSION_COUNT - PHRASE_CHECKPOINT_START + 1 },
-      (_, index) => PHRASE_CHECKPOINT_START - 1 + index,
-    ).find((missionIndex) =>
-      !stageState.completedCheckpointIds.includes(phraseMissionId(stageId, missionIndex)),
-    );
+  return Math.min(stageState.completedMissionIds.length, PHRASE_MISSION_COUNT - 1);
+}
 
-    if (firstUnqualified !== undefined) {
-      return firstUnqualified;
-    }
+export function phraseReviewMissionForStage(
+  stage: PhraseStageContent,
+  stageState: PhraseStageProgress,
+  sessionId: string,
+): PhraseMission | null {
+  const status = phraseCheckpointStatus(stage.id, stageState);
+  if (!stageState.completed || status.ready) {
+    return null;
   }
 
-  return Math.min(stageState.completedMissionIds.length, PHRASE_MISSION_COUNT - 1);
+  if (
+    stageState.checkpointAttempt?.sessionId === sessionId &&
+    !stageState.checkpointAttemptSessionIds.includes(sessionId)
+  ) {
+    const missionIndex = phraseMissionIndexFromId(stage.id, stageState.checkpointAttempt.missionId);
+    return missionIndex === null ? null : phraseMissionForStage(stage, missionIndex);
+  }
+
+  if (stageState.checkpointAttemptSessionIds.includes(sessionId)) {
+    return null;
+  }
+
+  const candidates = Array.from(
+    { length: PHRASE_MISSION_COUNT - PHRASE_CHECKPOINT_START + 1 },
+    (_, index) => PHRASE_CHECKPOINT_START - 1 + index,
+  ).filter((missionIndex) =>
+    !stageState.completedCheckpointIds.includes(phraseMissionId(stage.id, missionIndex)),
+  );
+  const neededActivity = !status.hasConstruction
+    ? "build"
+    : !status.hasMeaning
+      ? "match"
+      : null;
+  const missionIndex = candidates.find((candidate) =>
+    neededActivity === null || MISSION_ACTIVITIES[candidate] === neededActivity
+  ) ?? candidates[0];
+
+  return missionIndex === undefined ? null : phraseMissionForStage(stage, missionIndex);
+}
+
+export function phraseReviewRoundIndex(
+  stageState: PhraseStageProgress,
+  mission: PhraseMission,
+  sessionId: string,
+): number {
+  const attempt = stageState.checkpointAttempt;
+  return attempt?.missionId === mission.id && attempt.sessionId === sessionId
+    ? Math.min(attempt.itemIds.length, mission.items.length - 1)
+    : 0;
 }
 
 export function phraseChapterProgress(missionIndex: number): number {
@@ -389,34 +426,12 @@ export function advancePhraseRound(
   }
   let checkpointQualified = false;
   if (mission.checkpoint) {
-    const attempt = next.checkpointAttempt;
-    const completedInOneSession = Boolean(
-      attempt &&
-      attempt.missionId === mission.id &&
-      attempt.sessionId === sessionId &&
-      mission.items.every((missionItem) => attempt.itemIds.includes(missionItem.id)),
-    );
-    const sessionAlreadyQualified = Object.values(next.checkpointSessionIds)
-      .includes(sessionId);
-    checkpointQualified = Boolean(
-      completedInOneSession &&
-      !attempt?.hadError &&
-      !attempt?.usedHelp &&
-      !sessionAlreadyQualified,
-    );
-
-    if (checkpointQualified && !next.completedCheckpointIds.includes(mission.id)) {
-      next.completedCheckpointIds.push(mission.id);
-      next.checkpointSessionIds[mission.id] = sessionId;
-    }
-    if (!next.checkpointAttemptSessionIds.includes(sessionId)) {
-      next.checkpointAttemptSessionIds.push(sessionId);
-    }
-    next.checkpointAttempt = null;
+    checkpointQualified = finishCheckpointAttempt(next, mission, sessionId);
   }
   next.currentRoundIndex = 0;
-  const stageCompleted = phraseCheckpointStatus(stage.id, next).ready;
+  const stageCompleted = next.completedMissionIds.length >= PHRASE_MISSION_COUNT;
   next.completed = stageCompleted;
+  next.mastered = phraseCheckpointStatus(stage.id, next).ready;
   next.restoredArea = stageCompleted;
   next.companionUnlocked = stageCompleted;
 
@@ -428,14 +443,41 @@ export function advancePhraseRound(
   };
 }
 
-export function checkpointBlockedForSession(
+export function advancePhraseReviewRound(
+  stage: PhraseStageContent,
   stageState: PhraseStageProgress,
   mission: PhraseMission,
+  itemId: string,
   sessionId: string,
-): boolean {
-  return mission.checkpoint &&
-    stageState.checkpointAttemptSessionIds.includes(sessionId) &&
-    stageState.checkpointAttempt?.sessionId !== sessionId;
+): PhraseRoundAdvance {
+  const next = recordPhraseEvidence(
+    stageState,
+    itemId,
+    "correct",
+    { mission, sessionId },
+  );
+  const missionCompleted = mission.items.every((missionItem) =>
+    next.checkpointAttempt?.itemIds.includes(missionItem.id)
+  );
+
+  if (!missionCompleted) {
+    return {
+      stageState: next,
+      missionCompleted: false,
+      stageCompleted: next.completed,
+      checkpointQualified: false,
+    };
+  }
+
+  const checkpointQualified = finishCheckpointAttempt(next, mission, sessionId);
+  next.mastered = phraseCheckpointStatus(stage.id, next).ready;
+
+  return {
+    stageState: next,
+    missionCompleted: true,
+    stageCompleted: next.completed,
+    checkpointQualified,
+  };
 }
 
 export function phraseCheckpointStatus(
@@ -472,6 +514,50 @@ export function phraseCheckpointStatus(
     hasMeaning,
     ready,
   };
+}
+
+function finishCheckpointAttempt(
+  stageState: PhraseStageProgress,
+  mission: PhraseMission,
+  sessionId: string,
+): boolean {
+  const attempt = stageState.checkpointAttempt;
+  const completedInOneSession = Boolean(
+    attempt &&
+    attempt.missionId === mission.id &&
+    attempt.sessionId === sessionId &&
+    mission.items.every((missionItem) => attempt.itemIds.includes(missionItem.id)),
+  );
+  const sessionAlreadyQualified = Object.values(stageState.checkpointSessionIds)
+    .includes(sessionId);
+  const checkpointQualified = Boolean(
+    completedInOneSession &&
+    !attempt?.hadError &&
+    !attempt?.usedHelp &&
+    !sessionAlreadyQualified,
+  );
+
+  if (checkpointQualified && !stageState.completedCheckpointIds.includes(mission.id)) {
+    stageState.completedCheckpointIds.push(mission.id);
+    stageState.checkpointSessionIds[mission.id] = sessionId;
+  }
+  if (!stageState.checkpointAttemptSessionIds.includes(sessionId)) {
+    stageState.checkpointAttemptSessionIds.push(sessionId);
+  }
+  stageState.checkpointAttempt = null;
+  return checkpointQualified;
+}
+
+function phraseMissionIndexFromId(stageId: number, missionId: string): number | null {
+  const prefix = `phrase-stage-${stageId}-mission-`;
+  const missionNumber = missionId.startsWith(prefix)
+    ? Number(missionId.slice(prefix.length))
+    : 0;
+  return Number.isInteger(missionNumber) &&
+    missionNumber >= PHRASE_CHECKPOINT_START &&
+    missionNumber <= PHRASE_MISSION_COUNT
+    ? missionNumber - 1
+    : null;
 }
 
 function cleanOrderedPrefix(value: unknown, allowedIds: string[]): string[] {

@@ -64,6 +64,7 @@ function createDefaultPhraseStageState() {
     independentItemIds: [],
     itemResults: {},
     completed: false,
+    mastered: false,
     restoredArea: false,
     companionUnlocked: false,
   };
@@ -221,19 +222,17 @@ function sanitizePhraseStageState(stage, value) {
   const independentItemIds = cleanStringIds(source.independentItemIds, allowedItemIds)
     .filter((itemId) => !helpedItemIds.includes(itemId));
   const itemResults = cleanPhraseItemResults(source.itemResults, allowedItemIds);
-  const completed = phraseCheckpointReady(
+  const mastered = phraseCheckpointReady(
     stage.id,
     completedMissionIds,
     completedCheckpointIds,
     checkpointSessionIds,
   );
-  const firstUnqualifiedIndex = allowedCheckpointIds.findIndex((missionId) =>
-    !completedCheckpointIds.includes(missionId),
+  const completed = completedMissionIds.length >= PHRASE_MISSION_COUNT;
+  const currentMissionIndex = Math.min(
+    completedMissionIds.length,
+    PHRASE_MISSION_COUNT - 1,
   );
-  const currentMissionIndex = completedMissionIds.length >= PHRASE_MISSION_COUNT &&
-    !completed && firstUnqualifiedIndex >= 0
-    ? PHRASE_CHECKPOINT_START - 1 + firstUnqualifiedIndex
-    : Math.min(completedMissionIds.length, PHRASE_MISSION_COUNT - 1);
   const maxRoundIndex = currentMissionIndex < PHRASE_CHECKPOINT_START - 1 ? 3 : 2;
   const currentRoundIndex = completed
     ? 0
@@ -254,6 +253,7 @@ function sanitizePhraseStageState(stage, value) {
     independentItemIds,
     itemResults,
     completed,
+    mastered,
     restoredArea: completed,
     companionUnlocked: completed,
   };

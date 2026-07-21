@@ -23,6 +23,7 @@ import App, {
   firstWordLetter,
   fittedWordFontSize,
   initialState,
+  phraseReadingDayId,
   randomWordIndex,
   reducer,
   rewardStatus,
@@ -57,6 +58,11 @@ const apiMock = vi.mocked(api);
 
 const user: User = { id: 7, username: "dan", email: "dan@example.com" };
 const rewardSlots: RewardSlot[] = ["weapon", "boots", "shield", "cape"];
+
+test("groups Phrase Forest mastery evidence by local reading day", () => {
+  expect(phraseReadingDayId(new Date(2026, 6, 21, 12, 30)))
+    .toBe("phrase-reading-day-2026-07-21");
+});
 
 function createStage(id: number, words = ["alpha", "apple", "beta", "cat"]): StageContent {
   return {
