@@ -58,13 +58,17 @@ export interface StageContent {
   fieldTrip: FieldTripContent;
 }
 
-export interface PhraseVisualContent {
-  kind: "symbol" | "location";
-  symbol?: string;
-  relation?: string;
-  anchor?: string;
-  target?: string;
-}
+export type PhraseVisualContent =
+  | {
+    kind: "symbol";
+    symbol: string;
+  }
+  | {
+    kind: "location";
+    relation: string;
+    anchor: string;
+    target: string;
+  };
 
 export interface PhraseItemContent {
   id: string;

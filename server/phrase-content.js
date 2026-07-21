@@ -1,5 +1,7 @@
 "use strict";
 
+const TABLE_VISUAL_TOKEN = "[table]";
+
 const CHAPTERS = Object.freeze([
   { id: "discover", title: "Discover", missionStart: 1, missionEnd: 5 },
   { id: "practice", title: "Practice", missionStart: 6, missionEnd: 10 },
@@ -66,6 +68,7 @@ const QUALITY_SYMBOLS = Object.freeze({
 const NOUN_SYMBOLS = Object.freeze({
   answer: "✅",
   ball: "⚽",
+  bed: "🛏️",
   birds: "🐦🐦",
   boat: "⛵",
   book: "📘",
@@ -111,7 +114,7 @@ const NOUN_SYMBOLS = Object.freeze({
   sound: "🔊",
   stars: "⭐",
   story: "📖",
-  table: "🪵",
+  table: TABLE_VISUAL_TOKEN,
   tree: "🌳",
   voice: "🗣️",
   wall: "🧱",
@@ -320,7 +323,7 @@ function stageSixGroups() {
     ["book", "📘"], ["house", "🏠"], ["dog", "🐕"], ["car", "🚗"],
     ["mother", "👩"], ["father", "👨"], ["boy", "👦"], ["girl", "👧"],
     ["room", "🛋️"], ["ball", "⚽"], ["tree", "🌳"], ["game", "🎲"],
-    ["box", "📦"], ["table", "🪵"], ["door", "🚪"],
+    ["box", "📦"], ["table", TABLE_VISUAL_TOKEN], ["door", "🚪"],
   ];
   const modifierSets = [
     ["the", "a", "my", "your", "his"],

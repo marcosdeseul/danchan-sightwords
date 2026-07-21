@@ -12,6 +12,7 @@ import {
   PhraseForestWorld,
   PhrasePrompt,
   PhraseScene,
+  SceneSymbol,
   PhraseSuccessCard,
   StageWorldMission,
   stageMissionPresentation,
@@ -254,20 +255,25 @@ describe("Phrase Forest learning controls", () => {
 
     rerender(
       <>
-        <PhraseScene item={stage.practicePhrases[0]} />
+        <PhraseScene item={{
+          ...stage.practicePhrases[0],
+          visual: { kind: "symbol", symbol: "👥 [table]" },
+        }} />
         <PhraseScene item={{
           ...stage.practicePhrases[0],
           visual: {
             kind: "location",
             relation: "under",
-            anchor: "🪵",
+            anchor: "[table]",
             target: "🐿️",
           },
         }} />
+        <SceneSymbol value="" />
       </>,
     );
     expect(document.querySelector(".phrase-scene.is-symbol")).not.toBeNull();
     expect(document.querySelector(".phrase-scene.relation-under")).not.toBeNull();
+    expect(document.querySelectorAll(".phrase-scene-table")).toHaveLength(2);
   });
 
   test("shows restoration, companion collection, and permanent stage rewards", () => {

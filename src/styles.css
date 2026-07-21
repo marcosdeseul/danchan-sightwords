@@ -814,6 +814,46 @@ body.auth-required .game-layout {
   letter-spacing: 0.08em;
 }
 
+.phrase-scene-symbol-row {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.12em;
+}
+
+.phrase-scene-table {
+  position: relative;
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 1.05em;
+  height: 0.72em;
+}
+
+.phrase-scene-table::before {
+  position: absolute;
+  top: 0.1em;
+  right: 0;
+  left: 0;
+  height: 0.2em;
+  border: 0.035em solid #5b351c;
+  border-radius: 0.05em;
+  background: #a86632;
+  box-shadow: inset 0 0.045em rgba(255, 255, 255, 0.35);
+  content: "";
+}
+
+.phrase-scene-table::after {
+  position: absolute;
+  top: 0.33em;
+  left: 0.14em;
+  width: 0.1em;
+  height: 0.36em;
+  border-radius: 0 0 0.03em 0.03em;
+  background: #6b3d20;
+  box-shadow: 0.67em 0 #6b3d20;
+  content: "";
+}
+
 .phrase-scene.world-stage-6 { background: linear-gradient(180deg, #dbeafe 0 52%, #a16207 52% 60%, #86efac 60% 100%); }
 .phrase-scene.world-stage-7 { background: linear-gradient(180deg, #e0f2fe 0 48%, #fef3c7 48% 62%, #86efac 62% 100%); }
 .phrase-scene.world-stage-8 { background: linear-gradient(180deg, #dbeafe 0 48%, #bbf7d0 48% 100%); }

@@ -151,6 +151,16 @@ test("Phrase Forest defines five detailed stages using only the 1,000 known word
   });
 
   assert.equal(new Set(phraseIds).size, 375);
+
+  const phraseItem = (stageId, text) => {
+    const stage = forest.stages.find((candidate) => candidate.id === stageId);
+    return [...stage.practicePhrases, ...stage.checkpointPhrases]
+      .find((item) => item.text === text);
+  };
+  assert.match(phraseItem(6, "their table").visual.symbol, /\[table\]/);
+  assert.match(phraseItem(9, "clean the table").visual.symbol, /\[table\]/);
+  assert.equal(phraseItem(10, "on the table").visual.anchor, "[table]");
+  assert.equal(phraseItem(10, "on the bed").visual.anchor, "🛏️");
 });
 
 test("Phrase Forest content generation rejects words outside its approved foundation", () => {

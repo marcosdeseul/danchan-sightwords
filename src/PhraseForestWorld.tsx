@@ -657,15 +657,25 @@ export function PhraseScene({ item, stageId }: { item: PhraseItemContent; stageI
   if (visual.kind === "location") {
     return (
       <span className={`phrase-scene is-location relation-${visual.relation}${stageClass}`} aria-hidden="true">
-        <span className="phrase-scene-anchor">{visual.anchor}</span>
-        <span className="phrase-scene-target">{visual.target}</span>
+        <span className="phrase-scene-anchor"><SceneSymbol value={visual.anchor} /></span>
+        <span className="phrase-scene-target"><SceneSymbol value={visual.target} /></span>
       </span>
     );
   }
 
   return (
     <span className={`phrase-scene is-symbol${stageClass}`} aria-hidden="true">
-      {visual.symbol}
+      <SceneSymbol value={visual.symbol} />
+    </span>
+  );
+}
+
+export function SceneSymbol({ value }: { value: string }) {
+  return (
+    <span className="phrase-scene-symbol-row">
+      {value.split(" ").map((part, index) => part === "[table]"
+        ? <span className="phrase-scene-table" key={`table-${index}`} />
+        : <span key={`${part}-${index}`}>{part}</span>)}
     </span>
   );
 }
