@@ -21,6 +21,12 @@ const longWordCheck: WordCheckState = {
     unlockedStageIds: [1, 2, 3, 4, 5],
     completedFieldTrips: [1, 2, 3, 4],
     stages: {},
+    phraseForest: {
+      activeStageId: 6,
+      unlockedStageIds: [],
+      completedStageIds: [],
+      stages: {},
+    },
   },
   remainingWordIndices: [],
   failedWordIndices: [],
