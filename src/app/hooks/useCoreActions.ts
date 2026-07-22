@@ -4,6 +4,7 @@ import {
   SPEECH_START_TIMEOUT_MS,
   SPEECH_START_TIMEOUT_NOTICE,
   getSpeechVoices,
+  loadSpeechRate,
   loadSpeechVoiceUri,
   preferredEnglishVoice,
   speechFailureNotice,
@@ -84,7 +85,7 @@ export function useCoreActions({
     );
     utterance.lang = voice?.lang || "en-US";
     utterance.voice = voice;
-    utterance.rate = 0.76;
+    utterance.rate = loadSpeechRate();
     utterance.pitch = 1;
     utterance.volume = 1;
 

@@ -2,11 +2,18 @@
 
 import { describe, expect, test, vi } from "vitest";
 import {
+  DEFAULT_SPEECH_RATE,
+  MAX_SPEECH_RATE,
+  MIN_SPEECH_RATE,
+  SPEECH_RATE_STORAGE_KEY,
   SPEECH_VOICE_STORAGE_KEY,
   englishSpeechVoices,
   getSpeechVoices,
+  loadSpeechRate,
   loadSpeechVoiceUri,
+  normalizedSpeechRate,
   preferredEnglishVoice,
+  saveSpeechRate,
   saveSpeechVoiceUri,
   speechFailureNotice,
 } from "./speech";
@@ -84,6 +91,30 @@ describe("device speech compatibility", () => {
     };
     expect(loadSpeechVoiceUri(unavailableStorage)).toBe("");
     expect(() => saveSpeechVoiceUri("voice", unavailableStorage)).not.toThrow();
+  });
+
+  test("loads, bounds, and persists a device reading speed defensively", () => {
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: vi.fn((key: string) => values.get(key) ?? null),
+      setItem: vi.fn((key: string, value: string) => values.set(key, value)),
+    };
+    expect(loadSpeechRate(storage)).toBe(DEFAULT_SPEECH_RATE);
+    saveSpeechRate(1.05, storage);
+    expect(storage.setItem).toHaveBeenCalledWith(SPEECH_RATE_STORAGE_KEY, "1.05");
+    expect(loadSpeechRate(storage)).toBe(1.05);
+    expect(normalizedSpeechRate(0.1)).toBe(MIN_SPEECH_RATE);
+    expect(normalizedSpeechRate(2)).toBe(MAX_SPEECH_RATE);
+    expect(normalizedSpeechRate(Number.NaN)).toBe(DEFAULT_SPEECH_RATE);
+
+    values.set(SPEECH_RATE_STORAGE_KEY, "invalid");
+    expect(loadSpeechRate(storage)).toBe(DEFAULT_SPEECH_RATE);
+    const unavailableStorage = {
+      getItem: () => { throw new Error("blocked"); },
+      setItem: () => { throw new Error("blocked"); },
+    };
+    expect(loadSpeechRate(unavailableStorage)).toBe(DEFAULT_SPEECH_RATE);
+    expect(() => saveSpeechRate(1, unavailableStorage)).not.toThrow();
   });
 
   test("turns browser speech failures into useful device guidance", () => {

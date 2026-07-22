@@ -1,6 +1,10 @@
 export const SPEECH_REPLAY_DELAY_MS = 80;
 export const SPEECH_START_TIMEOUT_MS = 2_500;
 export const SPEECH_VOICE_STORAGE_KEY = "dan-sight-words-speech-voice";
+export const SPEECH_RATE_STORAGE_KEY = "dan-sight-words-speech-rate";
+export const DEFAULT_SPEECH_RATE = 0.76;
+export const MIN_SPEECH_RATE = 0.5;
+export const MAX_SPEECH_RATE = 1.2;
 
 export const SPEECH_START_TIMEOUT_NOTICE =
   "No sound started. Turn up media volume and enable text-to-speech in your device settings, then try again.";
@@ -46,6 +50,38 @@ export function saveSpeechVoiceUri(
     }
   } catch {
     // Speech still works with the automatic voice when storage is unavailable.
+  }
+}
+
+export function normalizedSpeechRate(rate: number): number {
+  if (!Number.isFinite(rate)) {
+    return DEFAULT_SPEECH_RATE;
+  }
+
+  return Math.min(MAX_SPEECH_RATE, Math.max(MIN_SPEECH_RATE, rate));
+}
+
+export function loadSpeechRate(
+  storage: Pick<Storage, "getItem"> = window.localStorage,
+): number {
+  try {
+    const savedRate = storage.getItem(SPEECH_RATE_STORAGE_KEY);
+    return savedRate === null
+      ? DEFAULT_SPEECH_RATE
+      : normalizedSpeechRate(Number(savedRate));
+  } catch {
+    return DEFAULT_SPEECH_RATE;
+  }
+}
+
+export function saveSpeechRate(
+  rate: number,
+  storage: Pick<Storage, "setItem"> = window.localStorage,
+): void {
+  try {
+    storage.setItem(SPEECH_RATE_STORAGE_KEY, String(normalizedSpeechRate(rate)));
+  } catch {
+    // Speech still works at the default rate when storage is unavailable.
   }
 }
 

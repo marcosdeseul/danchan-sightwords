@@ -53,6 +53,7 @@ import type {
 } from "./types";
 import {
   SPEECH_REPLAY_DELAY_MS,
+  SPEECH_RATE_STORAGE_KEY,
   SPEECH_START_TIMEOUT_MS,
   SPEECH_VOICE_STORAGE_KEY,
 } from "./app/speech";
@@ -804,9 +805,14 @@ describe("App integration", () => {
     const chosenVoice = createVoice({ lang: "en-GB", name: "Chosen UK", voiceURI: "chosen-uk" });
     const speech = installSpeech([createVoice(), chosenVoice]);
     window.localStorage.setItem(SPEECH_VOICE_STORAGE_KEY, chosenVoice.voiceURI);
+    window.localStorage.setItem(SPEECH_RATE_STORAGE_KEY, "1.08");
     await renderLoggedInApp();
     fireEvent.click(screen.getByRole("button", { name: "Test voice" }));
-    expect(speech.utterances.at(-1)).toMatchObject({ text: "Hello", voice: chosenVoice });
+    expect(speech.utterances.at(-1)).toMatchObject({
+      text: "Hello",
+      voice: chosenVoice,
+      rate: 1.08,
+    });
     act(() => speech.utterances.at(-1)?.onend?.());
   });
 

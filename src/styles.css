@@ -469,7 +469,8 @@ body.auth-required .game-layout {
   white-space: nowrap;
 }
 
-.voice-menu-controls {
+.voice-menu-controls,
+.voice-speed-controls {
   display: grid;
   grid-template-columns: auto minmax(220px, 1fr) auto;
   align-items: center;
@@ -477,7 +478,8 @@ body.auth-required .game-layout {
   gap: 8px;
 }
 
-.voice-menu-controls label {
+.voice-menu-controls label,
+.voice-speed-controls label {
   color: var(--muted);
   font-size: 0.8rem;
   font-weight: 900;
@@ -492,6 +494,19 @@ body.auth-required .game-layout {
   background: #ffffff;
   color: var(--ink);
   font-weight: 800;
+}
+
+.voice-speed-controls input {
+  width: 100%;
+  accent-color: var(--theme-dark);
+}
+
+.voice-speed-controls output {
+  min-width: 3.2rem;
+  color: var(--ink);
+  font-size: 0.86rem;
+  font-weight: 900;
+  text-align: right;
 }
 
 .voice-menu > p {
@@ -1595,7 +1610,8 @@ body.auth-required .game-layout {
 }
 
 .voice-menu summary:focus-visible,
-.voice-menu-controls select:focus-visible {
+.voice-menu-controls select:focus-visible,
+.voice-speed-controls input:focus-visible {
   outline: 4px solid rgba(37, 99, 235, 0.28);
   outline-offset: 3px;
 }
@@ -3163,6 +3179,7 @@ body.reward-reveal-is-open {
   .voice-menu { margin-left: 0; }
   .voice-menu-controls { grid-template-columns: 1fr; }
   .voice-menu-controls label { margin-bottom: -3px; }
+  .voice-speed-controls { grid-template-columns: auto minmax(0, 1fr) auto; }
   .phrase-stage-tabs { grid-template-columns: 1fr; }
   .metric { padding: 9px 7px; }
   .word-panel, .progress-panel { padding: 12px; }

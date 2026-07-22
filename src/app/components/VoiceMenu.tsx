@@ -1,10 +1,15 @@
 import { useEffect, useState } from "react";
 import { Icon } from "../../icons";
 import {
+  MAX_SPEECH_RATE,
+  MIN_SPEECH_RATE,
   englishSpeechVoices,
   getSpeechVoices,
+  loadSpeechRate,
   loadSpeechVoiceUri,
+  normalizedSpeechRate,
   preferredEnglishVoice,
+  saveSpeechRate,
   saveSpeechVoiceUri,
 } from "../speech";
 
@@ -16,6 +21,7 @@ function voiceLabel(voice: SpeechSynthesisVoice): string {
 export function VoiceMenu({ onPreview }: { onPreview: () => void }) {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [voiceUri, setVoiceUri] = useState(loadSpeechVoiceUri);
+  const [speechRate, setSpeechRate] = useState(loadSpeechRate);
   const synthesis = "speechSynthesis" in window ? window.speechSynthesis : null;
   const selectedVoice = preferredEnglishVoice(voices, voiceUri);
   const selectedVoiceAvailable = voices.some((voice) => voice.voiceURI === voiceUri);
@@ -39,6 +45,13 @@ export function VoiceMenu({ onPreview }: { onPreview: () => void }) {
     synthesis?.cancel();
     saveSpeechVoiceUri(nextVoiceUri);
     setVoiceUri(nextVoiceUri);
+  };
+
+  const chooseSpeechRate = (nextRate: number) => {
+    const normalizedRate = normalizedSpeechRate(nextRate);
+    synthesis?.cancel();
+    saveSpeechRate(normalizedRate);
+    setSpeechRate(normalizedRate);
   };
 
   return (
@@ -74,7 +87,20 @@ export function VoiceMenu({ onPreview }: { onPreview: () => void }) {
           Test voice
         </button>
       </div>
-      <p>The choice is saved on this device.</p>
+      <div className="voice-speed-controls">
+        <label htmlFor="readingSpeed">Reading speed</label>
+        <input
+          id="readingSpeed"
+          type="range"
+          min={MIN_SPEECH_RATE}
+          max={MAX_SPEECH_RATE}
+          step="0.01"
+          value={speechRate}
+          onChange={(event) => chooseSpeechRate(Number(event.currentTarget.value))}
+        />
+        <output htmlFor="readingSpeed">{speechRate.toFixed(2)}×</output>
+      </div>
+      <p>Voice and speed are saved on this device.</p>
     </details>
   );
 }
