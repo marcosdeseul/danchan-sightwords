@@ -1,5 +1,6 @@
 export const SPEECH_REPLAY_DELAY_MS = 80;
 export const SPEECH_START_TIMEOUT_MS = 2_500;
+export const SPEECH_VOICE_STORAGE_KEY = "dan-sight-words-speech-voice";
 
 export const SPEECH_START_TIMEOUT_NOTICE =
   "No sound started. Turn up media volume and enable text-to-speech in your device settings, then try again.";
@@ -17,6 +18,37 @@ function isUnitedStatesEnglishVoice(voice: SpeechSynthesisVoice): boolean {
   return normalizedLanguage(voice) === "en-us";
 }
 
+export function englishSpeechVoices(
+  voices: SpeechSynthesisVoice[],
+): SpeechSynthesisVoice[] {
+  return voices.filter(isEnglishVoice);
+}
+
+export function loadSpeechVoiceUri(
+  storage: Pick<Storage, "getItem"> = window.localStorage,
+): string {
+  try {
+    return storage.getItem(SPEECH_VOICE_STORAGE_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+export function saveSpeechVoiceUri(
+  voiceUri: string,
+  storage: Pick<Storage, "removeItem" | "setItem"> = window.localStorage,
+): void {
+  try {
+    if (voiceUri) {
+      storage.setItem(SPEECH_VOICE_STORAGE_KEY, voiceUri);
+    } else {
+      storage.removeItem(SPEECH_VOICE_STORAGE_KEY);
+    }
+  } catch {
+    // Speech still works with the automatic voice when storage is unavailable.
+  }
+}
+
 export function getSpeechVoices(synthesis: SpeechSynthesis): SpeechSynthesisVoice[] {
   try {
     return synthesis.getVoices();
@@ -27,11 +59,14 @@ export function getSpeechVoices(synthesis: SpeechSynthesis): SpeechSynthesisVoic
 
 export function preferredEnglishVoice(
   voices: SpeechSynthesisVoice[],
+  voiceUri = "",
 ): SpeechSynthesisVoice | null {
-  return voices.find((voice) => isUnitedStatesEnglishVoice(voice) && voice.localService)
-    || voices.find(isUnitedStatesEnglishVoice)
-    || voices.find((voice) => isEnglishVoice(voice) && voice.localService)
-    || voices.find(isEnglishVoice)
+  const englishVoices = englishSpeechVoices(voices);
+  return englishVoices.find((voice) => voice.voiceURI === voiceUri)
+    || englishVoices.find((voice) => isUnitedStatesEnglishVoice(voice) && voice.localService)
+    || englishVoices.find(isUnitedStatesEnglishVoice)
+    || englishVoices.find((voice) => voice.localService)
+    || englishVoices[0]
     || null;
 }
 

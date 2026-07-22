@@ -51,7 +51,11 @@ import type {
   StageContent,
   User,
 } from "./types";
-import { SPEECH_REPLAY_DELAY_MS, SPEECH_START_TIMEOUT_MS } from "./app/speech";
+import {
+  SPEECH_REPLAY_DELAY_MS,
+  SPEECH_START_TIMEOUT_MS,
+  SPEECH_VOICE_STORAGE_KEY,
+} from "./app/speech";
 
 vi.mock("./api", () => ({ api: vi.fn() }));
 
@@ -794,6 +798,16 @@ describe("App integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Next word" }));
     fireEvent.click(screen.getByRole("button", { name: "Shuffle words" }));
 
+  });
+
+  test("previews with the voice saved in the device menu", async () => {
+    const chosenVoice = createVoice({ lang: "en-GB", name: "Chosen UK", voiceURI: "chosen-uk" });
+    const speech = installSpeech([createVoice(), chosenVoice]);
+    window.localStorage.setItem(SPEECH_VOICE_STORAGE_KEY, chosenVoice.voiceURI);
+    await renderLoggedInApp();
+    fireEvent.click(screen.getByRole("button", { name: "Test voice" }));
+    expect(speech.utterances.at(-1)).toMatchObject({ text: "Hello", voice: chosenVoice });
+    act(() => speech.utterances.at(-1)?.onend?.());
   });
 
   test("reports a silent device speech engine instead of leaving Android users without feedback", async () => {

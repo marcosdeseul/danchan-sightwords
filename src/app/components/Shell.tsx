@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Icon } from "../../icons";
 import type { ProgressState, SightWordsContent, User } from "../../types";
 
+export { VoiceMenu } from "./VoiceMenu";
+
 export function Brand({ subtitle, title }: { subtitle: string; title: string }) {
   return (
     <div className="brand">

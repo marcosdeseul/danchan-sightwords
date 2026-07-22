@@ -4,6 +4,7 @@ import {
   SPEECH_START_TIMEOUT_MS,
   SPEECH_START_TIMEOUT_NOTICE,
   getSpeechVoices,
+  loadSpeechVoiceUri,
   preferredEnglishVoice,
   speechFailureNotice,
 } from "../speech";
@@ -77,7 +78,10 @@ export function useCoreActions({
     clearSpeechTimers();
 
     const utterance = new SpeechSynthesisUtterance(word);
-    const voice = preferredEnglishVoice(getSpeechVoices(synthesis));
+    const voice = preferredEnglishVoice(
+      getSpeechVoices(synthesis),
+      loadSpeechVoiceUri(),
+    );
     utterance.lang = voice?.lang || "en-US";
     utterance.voice = voice;
     utterance.rate = 0.76;

@@ -115,7 +115,8 @@ body.phrase-forest {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -372,6 +373,7 @@ body.auth-required .auth-message {
 
 body.auth-required .stage-tabs,
 body.auth-required .world-tabs,
+body.auth-required .voice-menu,
 body.auth-required .score-strip,
 body.auth-required .game-layout {
   display: none;
@@ -429,6 +431,75 @@ body.auth-required .game-layout {
 .world-tabs button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
+}
+
+.voice-menu {
+  margin: 0 0 14px auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.voice-menu summary {
+  display: flex;
+  align-items: center;
+  min-height: 46px;
+  padding: 8px 12px;
+  gap: 8px;
+  color: var(--muted);
+  cursor: pointer;
+  font-weight: 850;
+}
+
+.voice-menu summary svg {
+  width: 21px;
+  height: 21px;
+  fill: none;
+  stroke: var(--theme-dark);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.3;
+}
+
+.voice-menu summary strong {
+  max-width: min(42vw, 360px);
+  overflow: hidden;
+  color: var(--ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.voice-menu-controls {
+  display: grid;
+  grid-template-columns: auto minmax(220px, 1fr) auto;
+  align-items: center;
+  padding: 0 12px 10px;
+  gap: 8px;
+}
+
+.voice-menu-controls label {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.voice-menu-controls select {
+  min-width: 0;
+  min-height: 42px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.voice-menu > p {
+  margin: 0;
+  padding: 0 12px 10px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 750;
 }
 
 .stage-tabs {
@@ -1519,6 +1590,12 @@ body.auth-required .game-layout {
 }
 
 .parent-controls summary:focus-visible {
+  outline: 4px solid rgba(37, 99, 235, 0.28);
+  outline-offset: 3px;
+}
+
+.voice-menu summary:focus-visible,
+.voice-menu-controls select:focus-visible {
   outline: 4px solid rgba(37, 99, 235, 0.28);
   outline-offset: 3px;
 }
@@ -3083,6 +3160,9 @@ body.reward-reveal-is-open {
   .score-strip { grid-template-columns: repeat(2, 1fr); }
   .stage-tabs { grid-template-columns: 1fr; }
   .world-tabs { grid-template-columns: 1fr; }
+  .voice-menu { margin-left: 0; }
+  .voice-menu-controls { grid-template-columns: 1fr; }
+  .voice-menu-controls label { margin-bottom: -3px; }
   .phrase-stage-tabs { grid-template-columns: 1fr; }
   .metric { padding: 9px 7px; }
   .word-panel, .progress-panel { padding: 12px; }
