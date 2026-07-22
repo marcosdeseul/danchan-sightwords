@@ -434,24 +434,23 @@ body.auth-required .game-layout {
 }
 
 .voice-menu {
-  margin: 0 0 14px auto;
+  margin: 10px 0 0;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.82);
 }
 
-.voice-menu summary {
+.voice-menu-heading {
   display: flex;
   align-items: center;
   min-height: 46px;
   padding: 8px 12px;
   gap: 8px;
   color: var(--muted);
-  cursor: pointer;
   font-weight: 850;
 }
 
-.voice-menu summary svg {
+.voice-menu-heading svg {
   width: 21px;
   height: 21px;
   fill: none;
@@ -461,12 +460,21 @@ body.auth-required .game-layout {
   stroke-width: 2.3;
 }
 
-.voice-menu summary strong {
+.voice-menu-heading strong {
   max-width: min(42vw, 360px);
   overflow: hidden;
   color: var(--ink);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.parent-controls .voice-menu-controls,
+.parent-controls .voice-speed-controls {
+  grid-template-columns: 1fr;
+}
+
+.parent-controls .voice-speed-options {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .voice-menu-controls,
@@ -1639,7 +1647,6 @@ body.auth-required .game-layout {
   outline-offset: 3px;
 }
 
-.voice-menu summary:focus-visible,
 .voice-menu-controls select:focus-visible,
 .voice-speed-options button:focus-visible {
   outline: 4px solid rgba(37, 99, 235, 0.28);

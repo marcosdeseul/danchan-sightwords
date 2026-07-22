@@ -807,7 +807,10 @@ describe("App integration", () => {
     window.localStorage.setItem(SPEECH_VOICE_STORAGE_KEY, chosenVoice.voiceURI);
     window.localStorage.setItem(SPEECH_RATE_STORAGE_KEY, "1.15");
     await renderLoggedInApp();
-    fireEvent.click(screen.getByRole("button", { name: "Test voice" }));
+    const testVoiceButton = screen.getByRole("button", { name: "Test voice" });
+    expect(screen.getByText("Parent controls").closest("details"))
+      .toContainElement(testVoiceButton);
+    fireEvent.click(testVoiceButton);
     expect(speech.utterances.at(-1)).toMatchObject({
       text: "Hello",
       voice: chosenVoice,
@@ -1366,6 +1369,7 @@ describe("presentational components", () => {
         onUpdateEmail={() => undefined}
         onLogout={() => undefined}
         onResetProgress={() => undefined}
+        onPreviewVoice={() => undefined}
       />,
     );
     await browserUser.type(screen.getByLabelText("Username"), "dan");
@@ -1391,6 +1395,7 @@ describe("presentational components", () => {
         onUpdateEmail={onUpdateEmail}
         onLogout={onLogout}
         onResetProgress={onResetProgress}
+        onPreviewVoice={() => undefined}
       />,
     );
     const email = screen.getByLabelText("Email");
@@ -1411,6 +1416,7 @@ describe("presentational components", () => {
         onUpdateEmail={onUpdateEmail}
         onLogout={onLogout}
         onResetProgress={onResetProgress}
+        onPreviewVoice={() => undefined}
       />,
     );
     await waitFor(() => expect(screen.getByLabelText("Email")).toHaveValue(""));

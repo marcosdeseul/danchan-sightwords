@@ -26,7 +26,7 @@ import { useViewModel } from "./app/hooks/useViewModel";
 import { useWordFlow } from "./app/hooks/useWordFlow";
 import { phraseReadingDayId, readingDayControl } from "./app/phraseDays";
 export { phraseReadingDayId, readingDayControl } from "./app/phraseDays";
-import { AuthPanel, Brand, ScoreStrip, StageTabs, VoiceMenu } from "./app/components/Shell";
+import { AuthPanel, Brand, ScoreStrip, StageTabs } from "./app/components/Shell";
 import { ProgressPanel, WordCard, fittedWordFontSize } from "./app/components/Word";
 import {
   FieldTripOverlay,
@@ -332,6 +332,7 @@ export default function App() {
             onUpdateEmail={updateAccountEmail}
             onLogout={logout}
             onResetProgress={resetProgress}
+            onPreviewVoice={() => speakWord("Hello")}
           />
         </header>
 
@@ -354,8 +355,6 @@ export default function App() {
             <span><strong>Phrase Forest</strong><small>{phraseWorldAvailable ? "Stages 6-10" : "Complete 1,000 words"}</small></span>
           </button>
         </nav>
-
-        <VoiceMenu onPreview={() => speakWord("Hello")} />
 
         {phraseWorldActive && state.content.phraseForest ? (
           <PhraseForestWorld

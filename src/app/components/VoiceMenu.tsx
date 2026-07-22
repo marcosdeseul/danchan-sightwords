@@ -54,12 +54,12 @@ export function VoiceMenu({ onPreview }: { onPreview: () => void }) {
   };
 
   return (
-    <details className="voice-menu">
-      <summary>
+    <section className="voice-menu" aria-labelledby="voiceMenuTitle">
+      <div className="voice-menu-heading">
         <Icon name="speaker" />
-        <span>Voice</span>
+        <span id="voiceMenuTitle">Voice</span>
         <strong>{selectedVoice?.name || "Unavailable"}</strong>
-      </summary>
+      </div>
       <div className="voice-menu-controls">
         <label htmlFor="readingVoice">Reading voice</label>
         <select
@@ -108,6 +108,6 @@ export function VoiceMenu({ onPreview }: { onPreview: () => void }) {
         </div>
       </div>
       <p>Voice and speed are saved on this device.</p>
-    </details>
+    </section>
   );
 }
