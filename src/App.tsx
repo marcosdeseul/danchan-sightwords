@@ -1,10 +1,7 @@
 import { useEffect, useReducer, useRef, useState } from "react";
-import { api } from "./api";
 import { TreasureRewardReveal } from "./TreasureRewardReveal";
 import { PhraseForestWorld } from "./PhraseForestWorld";
 import {
-  MOVE_DELTAS,
-  TRIP_TARGET,
   activeStage,
   activeStageState,
   clearOfflineProgress,
@@ -19,13 +16,16 @@ import {
 import { Icon, IconSprite } from "./icons";
 import { useCoreActions } from "./app/hooks/useCoreActions";
 import { useFieldTripFlow } from "./app/hooks/useFieldTripFlow";
+import { useGameplayEffects } from "./app/hooks/useGameplayEffects";
+import { useAppInitialization } from "./app/hooks/useAppInitialization";
 import { usePersistence } from "./app/hooks/usePersistence";
 import { useSession } from "./app/hooks/useSession";
 import { useStageFlow } from "./app/hooks/useStageFlow";
 import { useTreasureFlow } from "./app/hooks/useTreasureFlow";
 import { useViewModel } from "./app/hooks/useViewModel";
 import { useWordFlow } from "./app/hooks/useWordFlow";
-import { getSpeechVoices } from "./app/speech";
+import { phraseReadingDayId, readingDayControl } from "./app/phraseDays";
+export { phraseReadingDayId, readingDayControl } from "./app/phraseDays";
 import { AuthPanel, Brand, ScoreStrip, StageTabs } from "./app/components/Shell";
 import { ProgressPanel, WordCard, fittedWordFontSize } from "./app/components/Word";
 import {
@@ -37,8 +37,7 @@ import {
   WordCheckOverlay,
 } from "./app/components/Overlays";
 import { rewardStatus } from "./app/view";
-import type { ProgressState, SightWordsContent } from "./types";
-import type { MeResponse, ProgressResponse } from "./app/apiTypes";
+import type { ProgressState } from "./types";
 
 import { initialState, reducer } from "./app/state";
 import type {
@@ -52,20 +51,6 @@ import type {
 
 import type { WordCheckFeedback, WordCheckState } from "./app/wordCheck";
 import type { TripCreature } from "./app/fieldTrip";
-
-export function phraseReadingDayId(date = new Date()): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `phrase-reading-day-${year}-${month}-${day}`;
-}
-
-export function readingDayControl(
-  enabled: boolean,
-  onStart: () => void,
-): (() => void) | undefined {
-  return enabled ? onStart : undefined;
-}
 
 export { initialState, reducer };
 export {
@@ -196,111 +181,28 @@ export default function App() {
     stopSpeech,
     openPendingMaze,
   });
+  useGameplayEffects({
+    state,
+    stateRef,
+    inventoryOpen,
+    setInventoryOpen,
+    treasureReveal,
+    moveMaze,
+    moveFieldTrip,
+    completeFieldTrip,
+    dispatch,
+    wordCheckFeedbackTimer,
+    fieldTripDefenseTimer,
+    speechControl,
+    stopSpeech,
+  });
 
   useEffect(() => {
     rewardClaimInFlight.current = false;
     setTreasureReveal(null);
   }, [state.user?.id]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function initialize() {
-      try {
-        const content = await api<SightWordsContent>("/api/content");
-        const initialProgress = defaultProgress(content);
-
-        if (cancelled) {
-          return;
-        }
-
-        dispatch({ type: "bootstrapped", content, progress: initialProgress });
-
-        try {
-          const me = await api<MeResponse>("/api/me");
-
-          if (cancelled) {
-            return;
-          }
-
-          if (!me.user) {
-            dispatch({
-              type: "accountReady",
-              user: null,
-              message: "Log in or sign up to play.",
-            });
-            return;
-          }
-
-          const offlineProgress = loadOfflineProgress(content, me.user.id);
-          let nextProgress: ProgressState;
-          let message = "";
-
-          try {
-            const serverProgress = await api<ProgressResponse>("/api/progress");
-            nextProgress = sanitizeProgress(content, serverProgress.progress);
-          } catch (error) {
-            if (!offlineProgress) {
-              throw error;
-            }
-
-            nextProgress = offlineProgress;
-            queuedProgress.current = offlineProgress;
-            message = "Offline. Progress is saved on this device and will sync automatically.";
-          }
-
-          if (offlineProgress && message === "") {
-            try {
-              const synced = await api<ProgressResponse>("/api/progress", {
-                method: "PUT",
-                body: { progress: offlineProgress },
-              });
-              nextProgress = sanitizeProgress(content, synced.progress);
-              clearOfflineProgress(me.user.id);
-              message = "Back online. Progress synced.";
-            } catch {
-              nextProgress = offlineProgress;
-              queuedProgress.current = offlineProgress;
-              message = "Offline. Progress is saved on this device and will sync automatically.";
-            }
-          }
-
-          clearPreviousLocalProgress();
-          dispatch({
-            type: "accountReady",
-            user: me.user,
-            progress: nextProgress,
-            message,
-          });
-
-          if (activeStageState(content, nextProgress).pendingReward) {
-            window.setTimeout(openPendingMaze, 0);
-          }
-        } catch {
-          dispatch({
-            type: "accountReady",
-            user: null,
-            message: window.navigator.onLine === false
-              ? "Server unavailable. Reconnect to log in."
-              : "Log in or sign up to play.",
-          });
-        }
-      } catch {
-        if (!cancelled) {
-          dispatch({
-            type: "setAuthMessage",
-            message: "The game could not load. Refresh and try again.",
-          });
-        }
-      }
-    }
-
-    initialize();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [openPendingMaze]);
+  useAppInitialization({ stateRef, queuedProgress, dispatch, openPendingMaze });
 
   useEffect(() => {
     const retrySync = () => {
@@ -351,130 +253,6 @@ export default function App() {
     document.body.classList.toggle("word-check-is-open", Boolean(wordCheck));
     document.body.classList.toggle("reward-reveal-is-open", Boolean(treasureReveal));
   }, [state.user, state.speaking, state.maze.open, state.fieldTrip.open, state.content, state.progress, state.activeWorld, inventoryOpen, wordCheck, treasureReveal]);
-
-  useEffect(() => () => {
-    if (wordCheckFeedbackTimer.current) {
-      window.clearTimeout(wordCheckFeedbackTimer.current);
-    }
-
-    if (fieldTripDefenseTimer.current) {
-      window.clearTimeout(fieldTripDefenseTimer.current);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!state.fieldTrip.open || state.fieldTrip.stageId === null || !state.content) {
-      return;
-    }
-
-    const stage = stageById(state.content, state.fieldTrip.stageId);
-    let frame = 0;
-    const tick = (timestamp: number) => {
-      dispatch({
-        type: "tickFieldTrip",
-        timestamp,
-        creatures: stage.fieldTrip.creatures,
-      });
-      frame = window.requestAnimationFrame(tick);
-    };
-
-    frame = window.requestAnimationFrame(tick);
-
-    return () => window.cancelAnimationFrame(frame);
-  }, [state.fieldTrip.open, state.fieldTrip.stageId, state.content]);
-
-  useEffect(() => {
-    if (
-      state.fieldTrip.open &&
-      state.fieldTrip.collected >= TRIP_TARGET
-    ) {
-      completeFieldTrip();
-    }
-  }, [state.fieldTrip.open, state.fieldTrip.collected, completeFieldTrip]);
-
-	  useEffect(() => {
-	    const handleKeyDown = (event: KeyboardEvent) => {
-	      const current = stateRef.current;
-
-	      if (!current.user) {
-	        return;
-	      }
-
-      if (treasureReveal) {
-        return;
-      }
-
-      if (inventoryOpen && event.key === "Escape") {
-        event.preventDefault();
-        setInventoryOpen(false);
-        return;
-      }
-
-	      if (current.maze.open) {
-        const directionByKey: Record<string, keyof typeof MOVE_DELTAS | undefined> = {
-          ArrowUp: "up",
-          ArrowDown: "down",
-          ArrowLeft: "left",
-          ArrowRight: "right",
-        };
-        const direction = directionByKey[event.key];
-
-        if (direction) {
-          event.preventDefault();
-          moveMaze(direction);
-        }
-        return;
-      }
-
-      if (current.fieldTrip.open) {
-        const directionByKey: Record<string, "left" | "right" | "hit" | "defend" | undefined> = {
-          ArrowLeft: "left",
-          ArrowRight: "right",
-          ArrowDown: "defend",
-          " ": "hit",
-          Enter: "hit",
-        };
-        const direction = directionByKey[event.key];
-
-        if (direction) {
-          event.preventDefault();
-          moveFieldTrip(direction);
-        }
-      }
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-	  }, [inventoryOpen, moveFieldTrip, moveMaze, treasureReveal]);
-
-  useEffect(() => {
-    const synthesis = "speechSynthesis" in window
-      ? window.speechSynthesis
-      : null;
-    const prepareVoices = () => {
-      if (synthesis) {
-        getSpeechVoices(synthesis);
-      }
-    };
-    const handleBeforeUnload = () => {
-      stopSpeech();
-    };
-
-    prepareVoices();
-    synthesis?.addEventListener("voiceschanged", prepareVoices);
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => {
-      synthesis?.removeEventListener("voiceschanged", prepareVoices);
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-      if (speechControl.current.replayTimer) {
-        window.clearTimeout(speechControl.current.replayTimer);
-      }
-      if (speechControl.current.startTimer) {
-        window.clearTimeout(speechControl.current.startTimer);
-      }
-      synthesis?.cancel();
-    };
-  }, [stopSpeech]);
 
   const { viewModel, treasureRevealDetails } = useViewModel(state, treasureReveal);
 

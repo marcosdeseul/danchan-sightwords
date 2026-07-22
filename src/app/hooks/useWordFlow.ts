@@ -17,7 +17,6 @@ import type { LastAnswerAction, TreasureRevealState } from "../state";
 import {
   WORD_CHECK_CHANCE,
   WORD_CHECK_CORRECT_FEEDBACK_MS,
-  WORD_CHECK_FOLLOW_UPS_AFTER_MISS,
   WORD_CHECK_WRONG_FEEDBACK_MS,
   buildWordCheckCandidateIndices,
   createWordCheckState,
@@ -33,6 +32,7 @@ import type {
   SetWordCheckFeedback,
   SpeakWord,
 } from "./types";
+import { answerWordCheckAction } from "./wordCheckActions";
 
 export function useWordFlow({
   stateRef,
@@ -408,109 +408,21 @@ export function useWordFlow({
     speakWord(wordCheck.word);
   }, [speakWord, wordCheck]);
 
-  const playWordCheckChoice = useCallback((choice: string) => {
-    speakWord(choice, { clearAutoAdvance: false });
-  }, [speakWord]);
+  const playWordCheckChoice = useCallback((choice: string) => speakWord(choice, { clearAutoAdvance: false }), [speakWord]);
 
   const answerWordCheck = useCallback((choice: string) => {
-    if (!wordCheck) {
-      return;
-    }
-
-    const current = stateRef.current;
-
-    if (!current.content) {
-      return;
-    }
-
-    const check = wordCheck;
-    const stage = stageById(current.content, check.stageId);
-
-    if (choice === check.word) {
-      const followUpsRemaining = Math.max(0, check.followUpsRemaining - 1);
-
-      if (followUpsRemaining > 0 && check.remainingWordIndices.length > 0) {
-        const nextCheck = createWordCheckState({
-          stage,
-          targetWordIndex: check.targetWordIndex,
-          candidateWordIndices: check.remainingWordIndices,
-          previousState: check.previousState,
-          failedWordIndices: check.failedWordIndices,
-          followUpsRemaining,
-        }) as WordCheckState;
-
-        setWordCheck(nextCheck);
-        speakWord(nextCheck.word, { clearAutoAdvance: false });
-        return;
-      }
-
-      setWordCheck(null);
-      clearWordCheckCandidates(check.stageId);
-
-      if (check.failedWordIndices.includes(check.targetWordIndex)) {
-        showCelebration("Practice this one");
-        scheduleNextWord(900);
-        return;
-      }
-
-      applyKnownWord({
-        stageId: check.stageId,
-        wordIndex: check.targetWordIndex,
-        previousState: check.previousState,
-        speak: false,
-      });
-      return;
-    }
-
-    const failedWordIndices = [...new Set([
-      ...check.failedWordIndices,
-      check.promptWordIndex,
-    ])];
-    const committedProgress = applyPracticeWord({
-      stageId: check.stageId,
-      wordIndex: check.promptWordIndex,
-      previousState: check.previousState,
-      speak: false,
-      message: "Practice this one",
-      advance: false,
+    answerWordCheckAction({
+      choice,
+      wordCheck,
+      stateRef,
+      setWordCheck,
+      clearWordCheckCandidates,
+      showCelebration,
+      scheduleNextWord,
+      speakWord,
+      applyKnownWord,
+      applyPracticeWord,
     });
-    const nextCandidateWordIndices = check.remainingWordIndices.filter(
-      (candidateIndex) => !failedWordIndices.includes(candidateIndex),
-    );
-    const nextFollowUpsRemaining = Math.max(
-      check.followUpsRemaining,
-      WORD_CHECK_FOLLOW_UPS_AFTER_MISS,
-    );
-
-    if (nextCandidateWordIndices.length > 0) {
-      const nextCheck = createWordCheckState({
-        stage,
-        targetWordIndex: check.targetWordIndex,
-        candidateWordIndices: nextCandidateWordIndices,
-        previousState: committedProgress || check.previousState,
-        failedWordIndices,
-        followUpsRemaining: nextFollowUpsRemaining,
-      }) as WordCheckState;
-
-      setWordCheck(nextCheck);
-      speakWord(nextCheck.word, { clearAutoAdvance: false });
-      return;
-    }
-
-    setWordCheck(null);
-    clearWordCheckCandidates(check.stageId);
-
-    if (!failedWordIndices.includes(check.targetWordIndex)) {
-      applyKnownWord({
-        stageId: check.stageId,
-        wordIndex: check.targetWordIndex,
-        previousState: committedProgress || check.previousState,
-        speak: false,
-      });
-      return;
-    }
-
-    scheduleNextWord(900);
   }, [
     applyKnownWord,
     applyPracticeWord,

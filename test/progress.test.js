@@ -666,19 +666,27 @@ test("stage 5 uses dedicated pilot and fighter-jet part art", () => {
     path.join(__dirname, "..", "src", "types.ts"),
     "utf8",
   );
+  const pilotGearSource = fs.readFileSync(
+    path.join(__dirname, "..", "src", "gear", "pilotGearArt.tsx"),
+    "utf8",
+  );
+  const variantsSource = fs.readFileSync(
+    path.join(__dirname, "..", "src", "gear", "variants.tsx"),
+    "utf8",
+  );
   const css = fs.readFileSync(
     path.join(__dirname, "..", "src", "styles.css"),
     "utf8",
   );
 
-  assert.match(gearSource, /type StageVariant =[^;]*"pilot"/);
+  assert.match(variantsSource, /type StageVariant =[^;]*"pilot"/);
   assert.match(gearSource, /stage\.id === 5 && <PilotBaseDetails/);
-  assert.match(gearSource, /function PilotGearShape/);
-  assert.match(gearSource, /case "engine":/);
-  assert.match(gearSource, /case "intake":/);
-  assert.match(gearSource, /case "gauge":/);
-  assert.match(gearSource, /case "afterburner":/);
-  assert.match(gearSource, /case "jetmodel":/);
+  assert.match(pilotGearSource, /function PilotGearShape/);
+  assert.match(pilotGearSource, /case "engine":/);
+  assert.match(pilotGearSource, /case "intake":/);
+  assert.match(pilotGearSource, /case "gauge":/);
+  assert.match(pilotGearSource, /case "afterburner":/);
+  assert.match(pilotGearSource, /case "jetmodel":/);
   assert.match(typeSource, /\| "engine"/);
   assert.match(typeSource, /\| "jetmodel"/);
   assert.match(gearSource, /character-stage-\$\{stage\.id\} \$\{stage\.themeClass\}/);

@@ -1,6 +1,6 @@
 import tsParser from "@typescript-eslint/parser";
 
-const MAX_LOGICAL_LINES = 1600;
+const MAX_LOGICAL_LINES = 500;
 
 export default [
   {
@@ -9,10 +9,12 @@ export default [
       "dist/**",
       "node_modules/**",
       "storybook-static/**",
+      "src/**/*.test.*",
+      "src/**/*.stories.*",
     ],
   },
   {
-    files: ["**/*.{cjs,js,mjs,ts,tsx}"],
+    files: ["src/**/*.{ts,tsx}", "server/**/*.js"],
     languageOptions: {
       parser: tsParser,
       parserOptions: {

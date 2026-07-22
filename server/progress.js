@@ -9,6 +9,7 @@ const {
   rewardsForStage,
   stageById,
 } = require("./content");
+const { createDefaultPhraseForestProgress: createPhraseForestProgress, sanitizePhraseForestProgress: sanitizePhraseForest } = require("./phrase-progress");
 
 const PHRASE_MISSION_COUNT = 20;
 const PHRASE_CHECKPOINT_START = 16;
@@ -48,40 +49,7 @@ function createDefaultProgress() {
     unlockedStageIds: [1],
     completedFieldTrips: [],
     stages,
-    phraseForest: createDefaultPhraseForestProgress(),
-  };
-}
-
-function createDefaultPhraseStageState() {
-  return {
-    currentRoundIndex: 0,
-    completedMissionIds: [],
-    completedCheckpointIds: [],
-    checkpointSessionIds: {},
-    checkpointAttemptSessionIds: [],
-    checkpointAttempt: null,
-    helpedItemIds: [],
-    independentItemIds: [],
-    itemResults: {},
-    completed: false,
-    mastered: false,
-    restoredArea: false,
-    companionUnlocked: false,
-  };
-}
-
-function createDefaultPhraseForestProgress() {
-  const stages = {};
-
-  PHRASE_FOREST.stages.forEach((stage) => {
-    stages[String(stage.id)] = createDefaultPhraseStageState();
-  });
-
-  return {
-    activeStageId: PHRASE_FOREST.stages[0].id,
-    unlockedStageIds: [],
-    completedStageIds: [],
-    stages,
+    phraseForest: createPhraseForestProgress(),
   };
 }
 
@@ -131,7 +99,7 @@ function sanitizeProgress(value) {
     ? requestedActiveStage
     : unlockedStageIds[unlockedStageIds.length - 1];
 
-  const phraseForest = sanitizePhraseForestProgress(source.phraseForest, stages);
+  const phraseForest = sanitizePhraseForest(source.phraseForest, stages);
 
   return {
     version: CONTENT_VERSION,
@@ -140,122 +108,6 @@ function sanitizeProgress(value) {
     completedFieldTrips,
     stages,
     phraseForest,
-  };
-}
-
-function sanitizePhraseForestProgress(value, wordStages) {
-  const source = value && typeof value === "object" ? value : {};
-  const sourceStages = source.stages && typeof source.stages === "object"
-    ? source.stages
-    : {};
-  const stages = {};
-
-  PHRASE_FOREST.stages.forEach((stage) => {
-    stages[String(stage.id)] = sanitizePhraseStageState(
-      stage,
-      sourceStages[String(stage.id)] || sourceStages[stage.id],
-    );
-  });
-
-  const academyComplete = STAGES.every((stage) =>
-    isStageComplete(stage, wordStages[String(stage.id)]),
-  );
-  const unlockedStageIds = [];
-  const completedStageIds = [];
-
-  if (academyComplete) {
-    for (const stage of PHRASE_FOREST.stages) {
-      unlockedStageIds.push(stage.id);
-      const stageState = stages[String(stage.id)];
-
-      if (!stageState.completed) {
-        break;
-      }
-
-      completedStageIds.push(stage.id);
-    }
-  }
-
-  const requestedActiveStageId = Number(source.activeStageId);
-  const activeStageId = unlockedStageIds.includes(requestedActiveStageId)
-    ? requestedActiveStageId
-    : unlockedStageIds[unlockedStageIds.length - 1] || PHRASE_FOREST.stages[0].id;
-
-  return { activeStageId, unlockedStageIds, completedStageIds, stages };
-}
-
-function sanitizePhraseStageState(stage, value) {
-  const source = value && typeof value === "object" ? value : {};
-  const allowedMissionIds = Array.from(
-    { length: PHRASE_MISSION_COUNT },
-    (_, index) => phraseMissionId(stage.id, index),
-  );
-  const completedMissionIds = cleanOrderedPrefix(source.completedMissionIds, allowedMissionIds);
-  const completedSet = new Set(completedMissionIds);
-  const allowedCheckpointIds = allowedMissionIds.slice(PHRASE_CHECKPOINT_START - 1);
-  const allowedCheckpointSet = new Set(allowedCheckpointIds);
-  let completedCheckpointIds = cleanStringIds(source.completedCheckpointIds, allowedCheckpointSet)
-    .filter((missionId) => completedSet.has(missionId));
-  let checkpointSessionIds = cleanCheckpointSessionIds(
-    source.checkpointSessionIds,
-    new Set(completedCheckpointIds),
-  );
-  if (
-    source.completed === true &&
-    completedMissionIds.length === PHRASE_MISSION_COUNT &&
-    Object.keys(checkpointSessionIds).length === 0
-  ) {
-    completedCheckpointIds = allowedCheckpointIds.slice(0, PHRASE_REQUIRED_CHECKPOINTS);
-    checkpointSessionIds = Object.fromEntries(completedCheckpointIds.map(
-      (missionId, index) => [missionId, `legacy-stage-${stage.id}-${index + 1}`],
-    ));
-  }
-  completedCheckpointIds = completedCheckpointIds.filter((missionId) =>
-    Boolean(checkpointSessionIds[missionId]),
-  );
-  const checkpointAttemptSessionIds = cleanSessionIds(source.checkpointAttemptSessionIds);
-  const allowedItemIds = new Set([
-    ...stage.practicePhrases,
-    ...stage.checkpointPhrases,
-  ].map((item) => item.id));
-  const helpedItemIds = cleanStringIds(source.helpedItemIds, allowedItemIds);
-  const independentItemIds = cleanStringIds(source.independentItemIds, allowedItemIds)
-    .filter((itemId) => !helpedItemIds.includes(itemId));
-  const itemResults = cleanPhraseItemResults(source.itemResults, allowedItemIds);
-  const mastered = phraseCheckpointReady(
-    stage.id,
-    completedMissionIds,
-    completedCheckpointIds,
-    checkpointSessionIds,
-  );
-  const completed = completedMissionIds.length >= PHRASE_MISSION_COUNT;
-  const currentMissionIndex = Math.min(
-    completedMissionIds.length,
-    PHRASE_MISSION_COUNT - 1,
-  );
-  const maxRoundIndex = currentMissionIndex < PHRASE_CHECKPOINT_START - 1 ? 3 : 2;
-  const currentRoundIndex = completed
-    ? 0
-    : clampInteger(source.currentRoundIndex, 0, maxRoundIndex);
-
-  return {
-    currentRoundIndex,
-    completedMissionIds,
-    completedCheckpointIds,
-    checkpointSessionIds,
-    checkpointAttemptSessionIds,
-    checkpointAttempt: cleanCheckpointAttempt(
-      source.checkpointAttempt,
-      allowedCheckpointSet,
-      allowedItemIds,
-    ),
-    helpedItemIds,
-    independentItemIds,
-    itemResults,
-    completed,
-    mastered,
-    restoredArea: completed,
-    companionUnlocked: completed,
   };
 }
 
@@ -436,7 +288,7 @@ function mergeProgress(existing, incoming) {
 }
 
 function mergePhraseForestProgress(base, next) {
-  const merged = createDefaultPhraseForestProgress();
+  const merged = createPhraseForestProgress();
 
   PHRASE_FOREST.stages.forEach((stage) => {
     const key = String(stage.id);
@@ -478,6 +330,13 @@ function mergePhraseForestProgress(base, next) {
 
   merged.activeStageId = next.activeStageId;
   return merged;
+}
+
+function mergePhraseItemResults(first, second) {
+  return Object.fromEntries([...new Set([...Object.keys(first), ...Object.keys(second)])].map((itemId) => {
+    const left = first[itemId] || {}; const right = second[itemId] || {};
+    return [itemId, { correct: Math.max(left.correct || 0, right.correct || 0), errors: Math.max(left.errors || 0, right.errors || 0), phraseHelp: Math.max(left.phraseHelp || 0, right.phraseHelp || 0), wordHelp: Math.max(left.wordHelp || 0, right.wordHelp || 0) }];
+  }));
 }
 
 function cleanWordArray(value, words) {
@@ -532,160 +391,6 @@ function cleanStageIdArray(value) {
   return unique(value.filter((stageId) => valid.has(stageId))).sort(
     (first, second) => first - second,
   );
-}
-
-function cleanOrderedPrefix(value, allowedIds) {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  const requested = new Set(value.filter((itemId) => typeof itemId === "string"));
-  const clean = [];
-
-  for (const itemId of allowedIds) {
-    if (!requested.has(itemId)) {
-      break;
-    }
-
-    clean.push(itemId);
-  }
-
-  return clean;
-}
-
-function cleanStringIds(value, allowedIds) {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return unique(value.filter((itemId) =>
-    typeof itemId === "string" && allowedIds.has(itemId),
-  ));
-}
-
-function cleanSessionIds(value) {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return unique(value.map(cleanSessionId).filter(Boolean));
-}
-
-function cleanCheckpointSessionIds(value, allowedMissionIds) {
-  if (!value || typeof value !== "object") {
-    return {};
-  }
-
-  const clean = {};
-  const usedSessions = new Set();
-  Object.entries(value).forEach(([missionId, rawSessionId]) => {
-    const sessionId = cleanSessionId(rawSessionId);
-    if (!allowedMissionIds.has(missionId) || !sessionId || usedSessions.has(sessionId)) {
-      return;
-    }
-    clean[missionId] = sessionId;
-    usedSessions.add(sessionId);
-  });
-  return clean;
-}
-
-function cleanCheckpointAttempt(value, allowedMissionIds, allowedItemIds) {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-
-  const missionId = typeof value.missionId === "string" ? value.missionId : "";
-  const sessionId = cleanSessionId(value.sessionId);
-  if (!allowedMissionIds.has(missionId) || !sessionId) {
-    return null;
-  }
-
-  return {
-    missionId,
-    sessionId,
-    itemIds: cleanStringIds(value.itemIds, allowedItemIds),
-    hadError: value.hadError === true,
-    usedHelp: value.usedHelp === true,
-  };
-}
-
-function cleanSessionId(value) {
-  return typeof value === "string" ? value.trim().slice(0, 120) : "";
-}
-
-function cleanPhraseItemResults(value, allowedIds) {
-  if (!value || typeof value !== "object") {
-    return {};
-  }
-
-  const clean = {};
-
-  Object.entries(value).forEach(([itemId, result]) => {
-    if (!allowedIds.has(itemId) || !result || typeof result !== "object") {
-      return;
-    }
-
-    clean[itemId] = {
-      correct: clampInteger(result.correct, 0, 999),
-      errors: clampInteger(result.errors, 0, 999),
-      phraseHelp: clampInteger(result.phraseHelp, 0, 999),
-      wordHelp: clampInteger(result.wordHelp, 0, 999),
-    };
-  });
-
-  return clean;
-}
-
-function mergePhraseItemResults(first, second) {
-  const merged = {};
-  const itemIds = new Set([...Object.keys(first), ...Object.keys(second)]);
-
-  itemIds.forEach((itemId) => {
-    const firstResult = first[itemId] || {};
-    const secondResult = second[itemId] || {};
-    merged[itemId] = {
-      correct: Math.max(firstResult.correct || 0, secondResult.correct || 0),
-      errors: Math.max(firstResult.errors || 0, secondResult.errors || 0),
-      phraseHelp: Math.max(firstResult.phraseHelp || 0, secondResult.phraseHelp || 0),
-      wordHelp: Math.max(firstResult.wordHelp || 0, secondResult.wordHelp || 0),
-    };
-  });
-
-  return merged;
-}
-
-function clampInteger(value, minimum, maximum) {
-  const number = Number(value);
-  return Number.isInteger(number)
-    ? Math.min(Math.max(number, minimum), maximum)
-    : minimum;
-}
-
-function phraseMissionId(stageId, missionIndex) {
-  return `phrase-stage-${stageId}-mission-${missionIndex + 1}`;
-}
-
-function phraseCheckpointReady(
-  stageId,
-  completedMissionIds,
-  completedCheckpointIds,
-  checkpointSessionIds,
-) {
-  const qualifiedMissionIds = completedCheckpointIds.filter((missionId) =>
-    Boolean(checkpointSessionIds[missionId]),
-  );
-  const prefix = `phrase-stage-${stageId}-mission-`;
-  const activities = new Set(qualifiedMissionIds.map((missionId) => {
-    const missionNumber = Number(missionId.slice(prefix.length));
-    return PHRASE_MISSION_ACTIVITIES[missionNumber - 1];
-  }));
-
-  // Sanitization guarantees one distinct session per qualified mission. Three
-  // of the five authored checkpoint missions also guarantee at least one match;
-  // requiring a build completes the construction-plus-meaning rule.
-  return completedMissionIds.length >= PHRASE_MISSION_COUNT &&
-    qualifiedMissionIds.length >= PHRASE_REQUIRED_CHECKPOINTS &&
-    activities.has("build");
 }
 
 function cleanItemArray(value, rewardById) {

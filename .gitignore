@@ -4,6 +4,8 @@ dist/
 .env.production
 .DS_Store
 coverage/
+playwright-report/
+test-results/
 storybook-static/
 npm-debug.log*
 debug-storybook.log

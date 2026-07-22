@@ -29,11 +29,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Enforce file-length limit
+      - name: Enforce production file-length limit
         run: npm run lint
 
       - name: Run tests with 100% coverage
         run: npm run coverage
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run end-to-end browser tests
+        run: npm run test:e2e
 
       - name: Build application
         run: npm run build
