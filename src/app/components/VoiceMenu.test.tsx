@@ -3,7 +3,6 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import {
-  DEFAULT_SPEECH_RATE,
   SPEECH_RATE_STORAGE_KEY,
   SPEECH_VOICE_STORAGE_KEY,
 } from "../speech";
@@ -53,9 +52,8 @@ test("shows an unavailable voice menu when browser speech is missing", () => {
   expect(screen.getByRole("combobox", { name: "Reading voice" })).toBeDisabled();
   expect(screen.getByRole("option")).toHaveTextContent("No English voices found");
   expect(screen.getByRole("button", { name: "Test voice" })).toBeDisabled();
-  expect(screen.getByRole("slider", { name: "Reading speed" })).toHaveValue(
-    String(DEFAULT_SPEECH_RATE),
-  );
+  expect(screen.getByRole("button", { name: /Learning.*0.76×/ }))
+    .toHaveAttribute("aria-pressed", "true");
 });
 
 test("lists English voices, saves a choice, previews it, and follows device updates", () => {
@@ -77,7 +75,7 @@ test("lists English voices, saves a choice, previews it, and follows device upda
     value: synthesis,
   });
   window.localStorage.setItem(SPEECH_VOICE_STORAGE_KEY, onlineUk.voiceURI);
-  window.localStorage.setItem(SPEECH_RATE_STORAGE_KEY, "0.9");
+  window.localStorage.setItem(SPEECH_RATE_STORAGE_KEY, "1");
   const preview = vi.fn();
 
   const view = render(<VoiceMenu onPreview={preview} />);
@@ -87,9 +85,8 @@ test("lists English voices, saves a choice, previews it, and follows device upda
   expect(screen.getByRole("option", { name: /Clear US.*on device/ })).toBeInTheDocument();
   expect(screen.getByRole("option", { name: /Warm UK.*online/ })).toBeInTheDocument();
   expect(screen.queryByRole("option", { name: /Korean/ })).not.toBeInTheDocument();
-  const speed = screen.getByRole("slider", { name: "Reading speed" });
-  expect(speed).toHaveValue("0.9");
-  expect(screen.getByText("0.90×", { selector: "output" })).toBeInTheDocument();
+  const normalSpeed = screen.getByRole("button", { name: /Normal.*1.00×/ });
+  expect(normalSpeed).toHaveAttribute("aria-pressed", "true");
 
   fireEvent.click(screen.getByRole("button", { name: "Test voice" }));
   expect(preview).toHaveBeenCalledOnce();
@@ -101,10 +98,12 @@ test("lists English voices, saves a choice, previews it, and follows device upda
   expect(window.localStorage.getItem(SPEECH_VOICE_STORAGE_KEY)).toBeNull();
   expect(select).toHaveValue("");
 
-  fireEvent.change(speed, { target: { value: "1.08" } });
+  const fastSpeed = screen.getByRole("button", { name: /Fast.*1.15×/ });
+  fireEvent.click(fastSpeed);
   expect(synthesis.cancel).toHaveBeenCalledTimes(3);
-  expect(window.localStorage.getItem(SPEECH_RATE_STORAGE_KEY)).toBe("1.08");
-  expect(screen.getByText("1.08×", { selector: "output" })).toBeInTheDocument();
+  expect(window.localStorage.getItem(SPEECH_RATE_STORAGE_KEY)).toBe("1.15");
+  expect(fastSpeed).toHaveAttribute("aria-pressed", "true");
+  expect(normalSpeed).toHaveAttribute("aria-pressed", "false");
 
   voices = [];
   act(() => voicesChanged?.());

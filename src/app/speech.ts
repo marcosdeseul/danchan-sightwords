@@ -3,8 +3,12 @@ export const SPEECH_START_TIMEOUT_MS = 2_500;
 export const SPEECH_VOICE_STORAGE_KEY = "dan-sight-words-speech-voice";
 export const SPEECH_RATE_STORAGE_KEY = "dan-sight-words-speech-rate";
 export const DEFAULT_SPEECH_RATE = 0.76;
-export const MIN_SPEECH_RATE = 0.5;
-export const MAX_SPEECH_RATE = 1.2;
+export const SPEECH_RATE_PRESETS = [
+  { label: "Slow", rate: 0.65 },
+  { label: "Learning", rate: DEFAULT_SPEECH_RATE },
+  { label: "Normal", rate: 1 },
+  { label: "Fast", rate: 1.15 },
+] as const;
 
 export const SPEECH_START_TIMEOUT_NOTICE =
   "No sound started. Turn up media volume and enable text-to-speech in your device settings, then try again.";
@@ -58,7 +62,11 @@ export function normalizedSpeechRate(rate: number): number {
     return DEFAULT_SPEECH_RATE;
   }
 
-  return Math.min(MAX_SPEECH_RATE, Math.max(MIN_SPEECH_RATE, rate));
+  return SPEECH_RATE_PRESETS.reduce((closestRate, preset) => (
+    Math.abs(preset.rate - rate) < Math.abs(closestRate - rate)
+      ? preset.rate
+      : closestRate
+  ), DEFAULT_SPEECH_RATE);
 }
 
 export function loadSpeechRate(

@@ -479,7 +479,7 @@ body.auth-required .game-layout {
 }
 
 .voice-menu-controls label,
-.voice-speed-controls label {
+.voice-speed-controls > span {
   color: var(--muted);
   font-size: 0.8rem;
   font-weight: 900;
@@ -496,17 +496,47 @@ body.auth-required .game-layout {
   font-weight: 800;
 }
 
-.voice-speed-controls input {
-  width: 100%;
-  accent-color: var(--theme-dark);
+.voice-speed-controls {
+  grid-template-columns: auto minmax(0, 1fr);
 }
 
-.voice-speed-controls output {
-  min-width: 3.2rem;
+.voice-speed-options {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(80px, 1fr));
+  gap: 6px;
+}
+
+.voice-speed-options button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
   color: var(--ink);
-  font-size: 0.86rem;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 850;
+  gap: 5px;
+}
+
+.voice-speed-options button strong {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.voice-speed-options button.is-active {
+  border-color: var(--theme-dark);
+  background: var(--theme-soft);
+  box-shadow: inset 0 0 0 1px var(--theme-dark);
+}
+
+.voice-speed-options button.is-active strong {
+  color: var(--theme-dark);
   font-weight: 900;
-  text-align: right;
 }
 
 .voice-menu > p {
@@ -1611,7 +1641,7 @@ body.auth-required .game-layout {
 
 .voice-menu summary:focus-visible,
 .voice-menu-controls select:focus-visible,
-.voice-speed-controls input:focus-visible {
+.voice-speed-options button:focus-visible {
   outline: 4px solid rgba(37, 99, 235, 0.28);
   outline-offset: 3px;
 }
@@ -3179,7 +3209,8 @@ body.reward-reveal-is-open {
   .voice-menu { margin-left: 0; }
   .voice-menu-controls { grid-template-columns: 1fr; }
   .voice-menu-controls label { margin-bottom: -3px; }
-  .voice-speed-controls { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .voice-speed-controls { grid-template-columns: 1fr; }
+  .voice-speed-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .phrase-stage-tabs { grid-template-columns: 1fr; }
   .metric { padding: 9px 7px; }
   .word-panel, .progress-panel { padding: 12px; }

@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import { Icon } from "../../icons";
 import {
-  MAX_SPEECH_RATE,
-  MIN_SPEECH_RATE,
+  SPEECH_RATE_PRESETS,
   englishSpeechVoices,
   getSpeechVoices,
   loadSpeechRate,
@@ -88,17 +87,25 @@ export function VoiceMenu({ onPreview }: { onPreview: () => void }) {
         </button>
       </div>
       <div className="voice-speed-controls">
-        <label htmlFor="readingSpeed">Reading speed</label>
-        <input
-          id="readingSpeed"
-          type="range"
-          min={MIN_SPEECH_RATE}
-          max={MAX_SPEECH_RATE}
-          step="0.01"
-          value={speechRate}
-          onChange={(event) => chooseSpeechRate(Number(event.currentTarget.value))}
-        />
-        <output htmlFor="readingSpeed">{speechRate.toFixed(2)}×</output>
+        <span id="readingSpeedLabel">Reading speed</span>
+        <div
+          className="voice-speed-options"
+          role="group"
+          aria-labelledby="readingSpeedLabel"
+        >
+          {SPEECH_RATE_PRESETS.map((preset) => (
+            <button
+              key={preset.label}
+              type="button"
+              className={speechRate === preset.rate ? "is-active" : ""}
+              aria-pressed={speechRate === preset.rate}
+              onClick={() => chooseSpeechRate(preset.rate)}
+            >
+              <span>{preset.label}</span>
+              <strong>{preset.rate.toFixed(2)}×</strong>
+            </button>
+          ))}
+        </div>
       </div>
       <p>Voice and speed are saved on this device.</p>
     </details>

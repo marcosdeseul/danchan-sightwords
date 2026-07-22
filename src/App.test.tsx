@@ -805,13 +805,13 @@ describe("App integration", () => {
     const chosenVoice = createVoice({ lang: "en-GB", name: "Chosen UK", voiceURI: "chosen-uk" });
     const speech = installSpeech([createVoice(), chosenVoice]);
     window.localStorage.setItem(SPEECH_VOICE_STORAGE_KEY, chosenVoice.voiceURI);
-    window.localStorage.setItem(SPEECH_RATE_STORAGE_KEY, "1.08");
+    window.localStorage.setItem(SPEECH_RATE_STORAGE_KEY, "1.15");
     await renderLoggedInApp();
     fireEvent.click(screen.getByRole("button", { name: "Test voice" }));
     expect(speech.utterances.at(-1)).toMatchObject({
       text: "Hello",
       voice: chosenVoice,
-      rate: 1.08,
+      rate: 1.15,
     });
     act(() => speech.utterances.at(-1)?.onend?.());
   });
