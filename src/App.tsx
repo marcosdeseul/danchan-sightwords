@@ -332,6 +332,7 @@ export default function App() {
             onUpdateEmail={updateAccountEmail}
             onLogout={logout}
             onResetProgress={resetProgress}
+            onPreviewVoice={() => speakWord("Hello")}
           />
         </header>
 

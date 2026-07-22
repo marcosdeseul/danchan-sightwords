@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Icon } from "../../icons";
 import type { ProgressState, SightWordsContent, User } from "../../types";
+import { VoiceMenu } from "./VoiceMenu";
 
 export function Brand({ subtitle, title }: { subtitle: string; title: string }) {
   return (
@@ -25,6 +26,7 @@ export function AuthPanel({
   onUpdateEmail,
   onLogout,
   onResetProgress,
+  onPreviewVoice,
 }: {
   user: User | null;
   message: string;
@@ -32,6 +34,7 @@ export function AuthPanel({
   onUpdateEmail: (email: string) => void;
   onLogout: () => void;
   onResetProgress: () => void;
+  onPreviewVoice: () => void;
 }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -69,6 +72,7 @@ export function AuthPanel({
         </form>
         <details className="parent-controls">
           <summary>Parent controls</summary>
+          <VoiceMenu onPreview={onPreviewVoice} />
           <button
             className="auth-button danger-account-button"
             type="button"

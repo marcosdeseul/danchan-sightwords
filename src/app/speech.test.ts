@@ -2,8 +2,18 @@
 
 import { describe, expect, test, vi } from "vitest";
 import {
+  DEFAULT_SPEECH_RATE,
+  SPEECH_RATE_PRESETS,
+  SPEECH_RATE_STORAGE_KEY,
+  SPEECH_VOICE_STORAGE_KEY,
+  englishSpeechVoices,
   getSpeechVoices,
+  loadSpeechRate,
+  loadSpeechVoiceUri,
+  normalizedSpeechRate,
   preferredEnglishVoice,
+  saveSpeechRate,
+  saveSpeechVoiceUri,
   speechFailureNotice,
 } from "./speech";
 
@@ -48,6 +58,62 @@ describe("device speech compatibility", () => {
     expect(preferredEnglishVoice([voice("en")])).toHaveProperty("lang", "en");
     expect(preferredEnglishVoice([korean])).toBeNull();
     expect(preferredEnglishVoice([])).toBeNull();
+    expect(englishSpeechVoices([localUs, korean])).toEqual([localUs]);
+  });
+
+  test("uses and persists a chosen English voice defensively", () => {
+    const localUs = voice("en-US", { localService: true, name: "Local US" });
+    const chosenUk = voice("en-GB", { name: "Chosen UK" });
+    expect(preferredEnglishVoice([localUs, chosenUk], chosenUk.voiceURI)).toBe(chosenUk);
+    expect(preferredEnglishVoice([localUs], "missing")).toBe(localUs);
+
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: vi.fn((key: string) => values.get(key) || null),
+      setItem: vi.fn((key: string, value: string) => values.set(key, value)),
+      removeItem: vi.fn((key: string) => values.delete(key)),
+    };
+    expect(loadSpeechVoiceUri(storage)).toBe("");
+    saveSpeechVoiceUri(chosenUk.voiceURI, storage);
+    expect(storage.setItem).toHaveBeenCalledWith(
+      SPEECH_VOICE_STORAGE_KEY,
+      chosenUk.voiceURI,
+    );
+    expect(loadSpeechVoiceUri(storage)).toBe(chosenUk.voiceURI);
+    saveSpeechVoiceUri("", storage);
+    expect(storage.removeItem).toHaveBeenCalledWith(SPEECH_VOICE_STORAGE_KEY);
+
+    const unavailableStorage = {
+      getItem: () => { throw new Error("blocked"); },
+      setItem: () => { throw new Error("blocked"); },
+      removeItem: () => { throw new Error("blocked"); },
+    };
+    expect(loadSpeechVoiceUri(unavailableStorage)).toBe("");
+    expect(() => saveSpeechVoiceUri("voice", unavailableStorage)).not.toThrow();
+  });
+
+  test("loads, snaps, and persists a device reading speed defensively", () => {
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: vi.fn((key: string) => values.get(key) ?? null),
+      setItem: vi.fn((key: string, value: string) => values.set(key, value)),
+    };
+    expect(loadSpeechRate(storage)).toBe(DEFAULT_SPEECH_RATE);
+    saveSpeechRate(1.12, storage);
+    expect(storage.setItem).toHaveBeenCalledWith(SPEECH_RATE_STORAGE_KEY, "1.15");
+    expect(loadSpeechRate(storage)).toBe(1.15);
+    expect(normalizedSpeechRate(0.1)).toBe(SPEECH_RATE_PRESETS[0].rate);
+    expect(normalizedSpeechRate(2)).toBe(SPEECH_RATE_PRESETS.at(-1)?.rate);
+    expect(normalizedSpeechRate(Number.NaN)).toBe(DEFAULT_SPEECH_RATE);
+
+    values.set(SPEECH_RATE_STORAGE_KEY, "invalid");
+    expect(loadSpeechRate(storage)).toBe(DEFAULT_SPEECH_RATE);
+    const unavailableStorage = {
+      getItem: () => { throw new Error("blocked"); },
+      setItem: () => { throw new Error("blocked"); },
+    };
+    expect(loadSpeechRate(unavailableStorage)).toBe(DEFAULT_SPEECH_RATE);
+    expect(() => saveSpeechRate(1, unavailableStorage)).not.toThrow();
   });
 
   test("turns browser speech failures into useful device guidance", () => {

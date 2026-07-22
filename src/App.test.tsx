@@ -51,7 +51,12 @@ import type {
   StageContent,
   User,
 } from "./types";
-import { SPEECH_REPLAY_DELAY_MS, SPEECH_START_TIMEOUT_MS } from "./app/speech";
+import {
+  SPEECH_REPLAY_DELAY_MS,
+  SPEECH_RATE_STORAGE_KEY,
+  SPEECH_START_TIMEOUT_MS,
+  SPEECH_VOICE_STORAGE_KEY,
+} from "./app/speech";
 
 vi.mock("./api", () => ({ api: vi.fn() }));
 
@@ -796,6 +801,24 @@ describe("App integration", () => {
 
   });
 
+  test("previews with the voice saved in the device menu", async () => {
+    const chosenVoice = createVoice({ lang: "en-GB", name: "Chosen UK", voiceURI: "chosen-uk" });
+    const speech = installSpeech([createVoice(), chosenVoice]);
+    window.localStorage.setItem(SPEECH_VOICE_STORAGE_KEY, chosenVoice.voiceURI);
+    window.localStorage.setItem(SPEECH_RATE_STORAGE_KEY, "1.15");
+    await renderLoggedInApp();
+    const testVoiceButton = screen.getByRole("button", { name: "Test voice" });
+    expect(screen.getByText("Parent controls").closest("details"))
+      .toContainElement(testVoiceButton);
+    fireEvent.click(testVoiceButton);
+    expect(speech.utterances.at(-1)).toMatchObject({
+      text: "Hello",
+      voice: chosenVoice,
+      rate: 1.15,
+    });
+    act(() => speech.utterances.at(-1)?.onend?.());
+  });
+
   test("reports a silent device speech engine instead of leaving Android users without feedback", async () => {
     const content = createContentWithoutRewards();
     await renderLoggedInApp(content, defaultProgress(content));
@@ -1346,6 +1369,7 @@ describe("presentational components", () => {
         onUpdateEmail={() => undefined}
         onLogout={() => undefined}
         onResetProgress={() => undefined}
+        onPreviewVoice={() => undefined}
       />,
     );
     await browserUser.type(screen.getByLabelText("Username"), "dan");
@@ -1371,6 +1395,7 @@ describe("presentational components", () => {
         onUpdateEmail={onUpdateEmail}
         onLogout={onLogout}
         onResetProgress={onResetProgress}
+        onPreviewVoice={() => undefined}
       />,
     );
     const email = screen.getByLabelText("Email");
@@ -1391,6 +1416,7 @@ describe("presentational components", () => {
         onUpdateEmail={onUpdateEmail}
         onLogout={onLogout}
         onResetProgress={onResetProgress}
+        onPreviewVoice={() => undefined}
       />,
     );
     await waitFor(() => expect(screen.getByLabelText("Email")).toHaveValue(""));
